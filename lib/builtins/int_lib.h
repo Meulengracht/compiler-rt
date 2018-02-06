@@ -51,7 +51,11 @@
 #else
 #define ALWAYS_INLINE __attribute__((always_inline))
 #define NOINLINE __attribute__((noinline))
+#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 201112L
+#define NORETURN _Noreturn
+#else
 #define NORETURN __attribute__((noreturn))
+#endif
 #define UNUSED __attribute__((unused))
 #endif
 
