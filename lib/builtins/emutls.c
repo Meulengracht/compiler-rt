@@ -100,7 +100,7 @@ static __inline emutls_address_array* emutls_getspecific() {
 #include <threads.h>
 
 static mtx_t emutls_mutex = UUID_INVALID;
-static tss_t emutls_pthread_key = UUID_INVALID;
+static tss_t emutls_pthread_key = TSS_KEY_INVALID;
 
 typedef unsigned int gcc_word __attribute__((mode(word)));
 typedef unsigned int gcc_pointer __attribute__((mode(pointer)));
