@@ -15,7 +15,7 @@
 DEFINE_COMPILERRT_FUNCTION(__alloca)
         mov    %rcx,%rax        // x64 _alloca is a normal function with parameter in rcx
         // fallthrough
-DEFINE_COMPILERRT_FUNCTION(___chkstk)
+DEFINE_COMPILERRT_FUNCTION(__chkstk)
         push   %rcx
         cmp    $0x1000,%rax
         lea    16(%rsp),%rcx     // rsp before calling this routine -> rcx
@@ -36,7 +36,7 @@ DEFINE_COMPILERRT_FUNCTION(___chkstk)
         push   (%rax)           // push return address onto the stack
         sub    %rsp,%rax        // restore the original value in rax
         ret
-END_COMPILERRT_FUNCTION(___chkstk)
+END_COMPILERRT_FUNCTION(__chkstk)
 END_COMPILERRT_FUNCTION(__alloca)
 
 #endif // __x86_64__

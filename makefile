@@ -15,6 +15,7 @@ else ifeq ($(VALI_ARCH), amd64)
 	math_flags = -D_HAVE_LONG_DOUBLE -D__x86_64__
 	ASFLAGS = -f win64 -Xvc
 	ASM_SRCS = $(wildcard lib/builtins/x86_64/*.S)
+	SOURCES += $(wildcard lib/builtins/x86_64/*.c)
 else
 $(error VALI_ARCH is not set to a valid value)
 endif
