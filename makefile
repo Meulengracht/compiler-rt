@@ -1,6 +1,9 @@
 # Makefile for building the standard c-library math for userspace
 #
 
+# Include all the definitions for os
+include ../../config/common.mk
+
 MVCS_SRCS = 
 SOURCES = $(wildcard lib/builtins/*.c)
 INCLUDES = -I../include
