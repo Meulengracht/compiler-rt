@@ -6,7 +6,7 @@ include ../../config/common.mk
 
 MVCS_SRCS = 
 SOURCES = $(wildcard lib/builtins/*.c)
-INCLUDES = -I../include
+INCLUDES = -I../include -I../libc/include
 
 # Setup architecture specific flags and paths
 ifeq ($(VALI_ARCH), i386)
