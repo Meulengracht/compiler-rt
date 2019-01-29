@@ -14,12 +14,6 @@ if(COMPILER_RT_BUILD_PROFILE AND COMPILER_RT_HAS_PROFILE)
   list(APPEND SANITIZER_COMMON_LIT_TEST_DEPS profile)
 endif()
 
-if(COMPILER_RT_STANDALONE_BUILD)
-  add_executable(FileCheck IMPORTED GLOBAL)
-  set_property(TARGET FileCheck PROPERTY IMPORTED_LOCATION ${LLVM_TOOLS_BINARY_DIR}/FileCheck)
-  list(APPEND SANITIZER_COMMON_LIT_TEST_DEPS FileCheck)
-endif()
-
 # When ANDROID, we build tests with the host compiler (i.e. CMAKE_C_COMPILER),
 # and run tests with tools from the host toolchain.
 if(NOT ANDROID)
@@ -62,7 +56,7 @@ if(COMPILER_RT_CAN_EXECUTE_TESTS)
     compiler_rt_test_runtime(sanitizer_common)
 
     # OpenBSD not supporting asan, cannot run the tests
-    if(COMPILER_RT_BUILD_LIBFUZZER AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "OpenBSD")
+    if(COMPILER_RT_BUILD_LIBFUZZER AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "OpenBSD" AND NOT ANDROID)
       compiler_rt_test_runtime(fuzzer)
     endif()
 

@@ -1,9 +1,8 @@
 //===-- asan_interceptors.cc ----------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -275,7 +274,15 @@ INTERCEPTOR(int, swapcontext, struct ucontext_t *oucp,
   uptr stack, ssize;
   ReadContextStack(ucp, &stack, &ssize);
   ClearShadowMemoryForContextStack(stack, ssize);
+#if __has_attribute(__indirect_return__) && \
+    (defined(__x86_64__) || defined(__i386__))
+  int (*real_swapcontext)(struct ucontext_t *, struct ucontext_t *)
+    __attribute__((__indirect_return__))
+    = REAL(swapcontext);
+  int res = real_swapcontext(oucp, ucp);
+#else
   int res = REAL(swapcontext)(oucp, ucp);
+#endif
   // swapcontext technically does not return, but program may swap context to
   // "oucp" later, that would look as if swapcontext() returned 0.
   // We need to clear shadow for ucp once again, as it may be in arbitrary

@@ -1,9 +1,8 @@
 //===-- sanitizer_rtems.cc ------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -95,7 +94,10 @@ void GetThreadStackAndTls(bool main, uptr *stk_addr, uptr *stk_size,
   *tls_addr = *tls_size = 0;
 }
 
+void InitializePlatformEarly() {}
 void MaybeReexec() {}
+void CheckASLR() {}
+void CheckMPROTECT() {}
 void DisableCoreDumperIfNecessary() {}
 void InstallDeadlySignalHandlers(SignalHandlerType handler) {}
 void SetAlternateSignalStack() {}
@@ -192,7 +194,7 @@ fd_t OpenFile(const char *filename, FileAccessMode mode, error_t *errno_p) {
   int flags;
   switch (mode) {
     case RdOnly: flags = O_RDONLY; break;
-    case WrOnly: flags = O_WRONLY | O_CREAT; break;
+    case WrOnly: flags = O_WRONLY | O_CREAT | O_TRUNC; break;
     case RdWr: flags = O_RDWR | O_CREAT; break;
   }
   fd_t res = open(filename, flags, 0660);
@@ -225,11 +227,6 @@ bool WriteToFile(fd_t fd, const void *buff, uptr buff_size, uptr *bytes_written,
   return true;
 }
 
-bool RenameFile(const char *oldpath, const char *newpath, error_t *error_p) {
-  uptr res = rename(oldpath, newpath);
-  return !internal_iserror(res, error_p);
-}
-
 void ReleaseMemoryPagesToOS(uptr beg, uptr end) {}
 void DumpProcessMap() {}
 
@@ -238,8 +235,12 @@ bool IsAccessibleMemoryRange(uptr beg, uptr size) {
   return true;
 }
 
-char **GetArgv() { return NULL; }
-const char *GetEnv(const char *name) { return NULL; }
+char **GetArgv() { return nullptr; }
+char **GetEnviron() { return nullptr; }
+
+const char *GetEnv(const char *name) {
+  return getenv(name);
+}
 
 uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
   internal_strncpy(buf, "StubBinaryName", buf_len);

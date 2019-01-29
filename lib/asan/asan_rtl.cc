@@ -1,9 +1,8 @@
 //===-- asan_rtl.cc -------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -66,8 +65,14 @@ static void AsanCheckFailed(const char *file, int line, const char *cond,
                             u64 v1, u64 v2) {
   Report("AddressSanitizer CHECK failed: %s:%d \"%s\" (0x%zx, 0x%zx)\n", file,
          line, cond, (uptr)v1, (uptr)v2);
-  // FIXME: check for infinite recursion without a thread-local counter here.
-  PRINT_CURRENT_STACK_CHECK();
+
+  // Print a stack trace the first time we come here. Otherwise, we probably
+  // failed a CHECK during symbolization.
+  static atomic_uint32_t num_calls;
+  if (atomic_fetch_add(&num_calls, 1, memory_order_relaxed) == 0) {
+    PRINT_CURRENT_STACK_CHECK();
+  }
+
   Die();
 }
 
@@ -377,6 +382,19 @@ void PrintAddressSpaceLayout() {
           kHighShadowBeg > kMidMemEnd);
 }
 
+#if defined(__thumb__) && defined(__linux__)
+#define START_BACKGROUND_THREAD_IN_ASAN_INTERNAL
+#endif
+
+#ifndef START_BACKGROUND_THREAD_IN_ASAN_INTERNAL
+static bool UNUSED __local_asan_dyninit = [] {
+  MaybeStartBackgroudThread();
+  SetSoftRssLimitExceededCallback(AsanSoftRssLimitExceededCallback);
+
+  return false;
+}();
+#endif
+
 static void AsanInitInternal() {
   if (LIKELY(asan_inited)) return;
   SanitizerToolName = "AddressSanitizer";
@@ -384,10 +402,19 @@ static void AsanInitInternal() {
   asan_init_is_running = true;
 
   CacheBinaryName();
+  CheckASLR();
 
   // Initialize flags. This must be done early, because most of the
   // initialization steps look at flags().
   InitializeFlags();
+
+  // Stop performing init at this point if we are being loaded via
+  // dlopen() and the platform supports it.
+  if (SANITIZER_SUPPORTS_INIT_FOR_DLOPEN && UNLIKELY(HandleDlopenInit())) {
+    asan_init_is_running = false;
+    VReport(1, "AddressSanitizer init is being performed for dlopen().\n");
+    return;
+  }
 
   AsanCheckIncompatibleRT();
   AsanCheckDynamicRTPrereqs();
@@ -412,6 +439,8 @@ static void AsanInitInternal() {
 
   __asan_option_detect_stack_use_after_return =
       flags()->detect_stack_use_after_return;
+
+  __sanitizer::InitializePlatformEarly();
 
   // Re-exec ourselves if we need to set additional env or command line args.
   MaybeReexec();
@@ -440,8 +469,10 @@ static void AsanInitInternal() {
   allocator_options.SetFrom(flags(), common_flags());
   InitializeAllocator(allocator_options);
 
+#ifdef START_BACKGROUND_THREAD_IN_ASAN_INTERNAL
   MaybeStartBackgroudThread();
   SetSoftRssLimitExceededCallback(AsanSoftRssLimitExceededCallback);
+#endif
 
   // On Linux AsanThread::ThreadStart() calls malloc() that's why asan_inited
   // should be set to 1 prior to initializing the threads.

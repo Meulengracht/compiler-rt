@@ -1,9 +1,8 @@
 //===-- tsan_stack_trace.cc -----------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -41,6 +40,11 @@ void VarSizeStackTrace::Init(const uptr *pcs, uptr cnt, uptr extra_top_pc) {
   internal_memcpy(trace_buffer, pcs, cnt * sizeof(trace_buffer[0]));
   if (extra_top_pc)
     trace_buffer[cnt] = extra_top_pc;
+}
+
+void VarSizeStackTrace::ReverseOrder() {
+  for (u32 i = 0; i < (size >> 1); i++)
+    Swap(trace_buffer[i], trace_buffer[size - 1 - i]);
 }
 
 }  // namespace __tsan

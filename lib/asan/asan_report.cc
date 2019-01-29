@@ -1,9 +1,8 @@
 //===-- asan_report.cc ----------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -84,7 +83,7 @@ static void PrintZoneForPointer(uptr ptr, uptr zone_ptr,
 bool ParseFrameDescription(const char *frame_descr,
                            InternalMmapVector<StackVarDescr> *vars) {
   CHECK(frame_descr);
-  char *p;
+  const char *p;
   // This string is created by the compiler and has the following form:
   // "n alloc_1 alloc_2 ... alloc_n"
   // where alloc_i looks like "offset size len ObjectName"
@@ -206,7 +205,7 @@ class ScopedInErrorReport {
   bool halt_on_error_;
 };
 
-ErrorDescription ScopedInErrorReport::current_error_;
+ErrorDescription ScopedInErrorReport::current_error_(LINKER_INITIALIZED);
 
 void ReportDeadlySignal(const SignalContext &sig) {
   ScopedInErrorReport in_report(/*fatal*/ true);
@@ -275,6 +274,14 @@ void ReportInvalidAllocationAlignment(uptr alignment,
   ScopedInErrorReport in_report(/*fatal*/ true);
   ErrorInvalidAllocationAlignment error(GetCurrentTidOrInvalid(), stack,
                                         alignment);
+  in_report.ReportError(error);
+}
+
+void ReportInvalidAlignedAllocAlignment(uptr size, uptr alignment,
+                                        BufferedStackTrace *stack) {
+  ScopedInErrorReport in_report(/*fatal*/ true);
+  ErrorInvalidAlignedAllocAlignment error(GetCurrentTidOrInvalid(), stack,
+                                          size, alignment);
   in_report.ReportError(error);
 }
 

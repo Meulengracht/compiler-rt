@@ -1,9 +1,8 @@
 //===-- msan_test.cc ------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1934,12 +1933,14 @@ TEST(MemorySanitizer, remquof) {
   EXPECT_NOT_POISONED(quo);
 }
 
+#if !defined(__NetBSD__)
 TEST(MemorySanitizer, remquol) {
   int quo;
   long double res = remquof(29.0, 3.0, &quo);
   ASSERT_NE(0.0, res);
   EXPECT_NOT_POISONED(quo);
 }
+#endif
 
 TEST(MemorySanitizer, lgamma) {
   double res = lgamma(1.1);
@@ -1953,11 +1954,13 @@ TEST(MemorySanitizer, lgammaf) {
   EXPECT_NOT_POISONED(signgam);
 }
 
+#if !defined(__NetBSD__)
 TEST(MemorySanitizer, lgammal) {
   long double res = lgammal(1.1);
   ASSERT_NE(0.0, res);
   EXPECT_NOT_POISONED(signgam);
 }
+#endif
 
 TEST(MemorySanitizer, lgamma_r) {
   int sgn;
@@ -3024,7 +3027,7 @@ TEST(MemorySanitizer, LongStruct) {
   EXPECT_POISONED(s2.a8);
 }
 
-#if defined(__NetBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #define MSAN_TEST_PRLIMIT 0
 #elif defined(__GLIBC__)
 #define MSAN_TEST_PRLIMIT __GLIBC_PREREQ(2, 13)

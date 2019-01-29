@@ -1,9 +1,8 @@
 //===-- tsan_platform_linux.cc --------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -212,11 +211,19 @@ void InitializePlatformEarly() {
   vmaSize =
     (MostSignificantSetBitIndex(GET_CURRENT_FRAME()) + 1);
 #if defined(__aarch64__)
+# if !SANITIZER_GO
   if (vmaSize != 39 && vmaSize != 42 && vmaSize != 48) {
     Printf("FATAL: ThreadSanitizer: unsupported VMA range\n");
     Printf("FATAL: Found %zd - Supported 39, 42 and 48\n", vmaSize);
     Die();
   }
+#else
+  if (vmaSize != 48) {
+    Printf("FATAL: ThreadSanitizer: unsupported VMA range\n");
+    Printf("FATAL: Found %zd - Supported 48\n", vmaSize);
+    Die();
+  }
+#endif
 #elif defined(__powerpc64__)
 # if !SANITIZER_GO
   if (vmaSize != 44 && vmaSize != 46 && vmaSize != 47) {

@@ -1,9 +1,8 @@
 //===-- dfsan.cc ----------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -423,9 +422,10 @@ static void dfsan_fini() {
 static void dfsan_init(int argc, char **argv, char **envp) {
   InitializeFlags();
 
-  InitializePlatformEarly();
+  ::InitializePlatformEarly();
 
-  MmapFixedNoReserve(ShadowAddr(), UnusedAddr() - ShadowAddr());
+  if (!MmapFixedNoReserve(ShadowAddr(), UnusedAddr() - ShadowAddr()))
+    Die();
 
   // Protect the region of memory we don't use, to preserve the one-to-one
   // mapping from application to shadow memory. But if ASLR is disabled, Linux

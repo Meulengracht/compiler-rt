@@ -1,9 +1,8 @@
 //===-- interception.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -29,6 +28,7 @@ typedef __sanitizer::uptr    SIZE_T;
 typedef __sanitizer::sptr    SSIZE_T;
 typedef __sanitizer::sptr    PTRDIFF_T;
 typedef __sanitizer::s64     INTMAX_T;
+typedef __sanitizer::u64     UINTMAX_T;
 typedef __sanitizer::OFF_T   OFF_T;
 typedef __sanitizer::OFF64_T OFF64_T;
 
@@ -169,7 +169,7 @@ const interpose_substitution substitution_##func_name[] \
 #elif !SANITIZER_MAC
 # define PTR_TO_REAL(x) real_##x
 # define REAL(x) __interception::PTR_TO_REAL(x)
-# define FUNC_TYPE(x) x##_f
+# define FUNC_TYPE(x) x##_type
 
 # define DECLARE_REAL(ret_type, func, ...) \
     typedef ret_type (*FUNC_TYPE(func))(__VA_ARGS__); \

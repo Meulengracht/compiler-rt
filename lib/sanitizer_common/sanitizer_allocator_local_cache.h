@@ -1,9 +1,8 @@
 //===-- sanitizer_allocator_local_cache.h -----------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -260,8 +259,11 @@ struct SizeClassAllocator32LocalCache {
         class_id, allocator, (TransferBatch *)c->batch[first_idx_to_drain]);
     // Failure to allocate a batch while releasing memory is non recoverable.
     // TODO(alekseys): Figure out how to do it without allocating a new batch.
-    if (UNLIKELY(!b))
-      DieOnFailure::OnOOM();
+    if (UNLIKELY(!b)) {
+      Report("FATAL: Internal error: %s's allocator failed to allocate a "
+             "transfer batch.\n", SanitizerToolName);
+      Die();
+    }
     b->SetFromArray(&c->batch[first_idx_to_drain], count);
     c->count -= count;
     allocator->DeallocateBatch(&stats_, class_id, b);

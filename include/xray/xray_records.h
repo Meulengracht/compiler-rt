@@ -1,9 +1,8 @@
 //===-- xray_records.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -95,8 +94,11 @@ struct alignas(32) XRayRecord {
   // The thread ID for the currently running thread.
   uint32_t TId = 0;
 
+  // The ID of process that is currently running
+  uint32_t PId = 0;
+  
   // Use some bytes in the end of the record for buffers.
-  char Buffer[12] = {};
+  char Buffer[8] = {};
 } __attribute__((packed));
 
 static_assert(sizeof(XRayRecord) == 32, "XRayRecord != 32 bytes");
@@ -115,8 +117,8 @@ struct alignas(32) XRayArgPayload {
   // The thread ID for the currently running thread.
   uint32_t TId = 0;
 
-  // Add more padding.
-  uint8_t Padding2[4] = {};
+  // The ID of process that is currently running
+  uint32_t PId = 0;
 
   // The argument payload.
   uint64_t Arg = 0;

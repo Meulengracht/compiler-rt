@@ -1,9 +1,8 @@
 //===-- xray_interface.cpp --------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,6 +20,13 @@
 #include <limits>
 #include <string.h>
 #include <sys/mman.h>
+
+#if SANITIZER_FUCHSIA
+#include <zircon/process.h>
+#include <zircon/sanitizer.h>
+#include <zircon/status.h>
+#include <zircon/syscalls.h>
+#endif
 
 #include "sanitizer_common/sanitizer_addrhashmap.h"
 #include "sanitizer_common/sanitizer_common.h"
@@ -51,31 +57,31 @@ static const int16_t cSledLength = 8;
 #endif /* CPU architecture */
 
 // This is the function to call when we encounter the entry or exit sleds.
-__sanitizer::atomic_uintptr_t XRayPatchedFunction{0};
+atomic_uintptr_t XRayPatchedFunction{0};
 
 // This is the function to call from the arg1-enabled sleds/trampolines.
-__sanitizer::atomic_uintptr_t XRayArgLogger{0};
+atomic_uintptr_t XRayArgLogger{0};
 
 // This is the function to call when we encounter a custom event log call.
-__sanitizer::atomic_uintptr_t XRayPatchedCustomEvent{0};
+atomic_uintptr_t XRayPatchedCustomEvent{0};
 
 // This is the function to call when we encounter a typed event log call.
-__sanitizer::atomic_uintptr_t XRayPatchedTypedEvent{0};
+atomic_uintptr_t XRayPatchedTypedEvent{0};
 
 // This is the global status to determine whether we are currently
 // patching/unpatching.
-__sanitizer::atomic_uint8_t XRayPatching{0};
+atomic_uint8_t XRayPatching{0};
 
 struct TypeDescription {
   uint32_t type_id;
   std::size_t description_string_length;
 };
 
-using TypeDescriptorMapType = __sanitizer::AddrHashMap<TypeDescription, 11>;
+using TypeDescriptorMapType = AddrHashMap<TypeDescription, 11>;
 // An address map from immutable descriptors to type ids.
 TypeDescriptorMapType TypeDescriptorAddressMap{};
 
-__sanitizer::atomic_uint32_t TypeEventDescriptorCounter{0};
+atomic_uint32_t TypeEventDescriptorCounter{0};
 
 // MProtectHelper is an RAII wrapper for calls to mprotect(...) that will
 // undo any successful mprotect(...) changes. This is used to make a page
@@ -92,22 +98,48 @@ class MProtectHelper {
 
 public:
   explicit MProtectHelper(void *PageAlignedAddr,
-                          std::size_t MProtectLen) XRAY_NEVER_INSTRUMENT
+                          std::size_t MProtectLen,
+                          std::size_t PageSize) XRAY_NEVER_INSTRUMENT
       : PageAlignedAddr(PageAlignedAddr),
         MProtectLen(MProtectLen),
-        MustCleanup(false) {}
+        MustCleanup(false) {
+#if SANITIZER_FUCHSIA
+    MProtectLen = RoundUpTo(MProtectLen, PageSize);
+#endif
+  }
 
   int MakeWriteable() XRAY_NEVER_INSTRUMENT {
+#if SANITIZER_FUCHSIA
+    auto R = __sanitizer_change_code_protection(
+        reinterpret_cast<uintptr_t>(PageAlignedAddr), MProtectLen, true);
+    if (R != ZX_OK) {
+      Report("XRay: cannot change code protection: %s\n",
+             _zx_status_get_string(R));
+      return -1;
+    }
+    MustCleanup = true;
+    return 0;
+#else
     auto R = mprotect(PageAlignedAddr, MProtectLen,
                       PROT_READ | PROT_WRITE | PROT_EXEC);
     if (R != -1)
       MustCleanup = true;
     return R;
+#endif
   }
 
   ~MProtectHelper() XRAY_NEVER_INSTRUMENT {
     if (MustCleanup) {
+#if SANITIZER_FUCHSIA
+      auto R = __sanitizer_change_code_protection(
+          reinterpret_cast<uintptr_t>(PageAlignedAddr), MProtectLen, false);
+      if (R != ZX_OK) {
+        Report("XRay: cannot change code protection: %s\n",
+               _zx_status_get_string(R));
+      }
+#else
       mprotect(PageAlignedAddr, MProtectLen, PROT_READ | PROT_EXEC);
+#endif
     }
   }
 };
@@ -145,19 +177,19 @@ bool patchSled(const XRaySledEntry &Sled, bool Enable,
 
 XRayPatchingStatus patchFunction(int32_t FuncId,
                                  bool Enable) XRAY_NEVER_INSTRUMENT {
-  if (!__sanitizer::atomic_load(&XRayInitialized,
-                                __sanitizer::memory_order_acquire))
+  if (!atomic_load(&XRayInitialized,
+                                memory_order_acquire))
     return XRayPatchingStatus::NOT_INITIALIZED; // Not initialized.
 
   uint8_t NotPatching = false;
-  if (!__sanitizer::atomic_compare_exchange_strong(
-          &XRayPatching, &NotPatching, true, __sanitizer::memory_order_acq_rel))
+  if (!atomic_compare_exchange_strong(
+          &XRayPatching, &NotPatching, true, memory_order_acq_rel))
     return XRayPatchingStatus::ONGOING; // Already patching.
 
   // Next, we look for the function index.
   XRaySledMap InstrMap;
   {
-    __sanitizer::SpinMutexLock Guard(&XRayInstrMapMutex);
+    SpinMutexLock Guard(&XRayInstrMapMutex);
     InstrMap = XRayInstrMap;
   }
 
@@ -181,8 +213,8 @@ XRayPatchingStatus patchFunction(int32_t FuncId,
   while (f != e)
     SucceedOnce |= patchSled(*f++, Enable, FuncId);
 
-  __sanitizer::atomic_store(&XRayPatching, false,
-                            __sanitizer::memory_order_release);
+  atomic_store(&XRayPatching, false,
+                            memory_order_release);
 
   if (!SucceedOnce) {
     Report("Failed patching any sled for function '%d'.", FuncId);
@@ -196,26 +228,26 @@ XRayPatchingStatus patchFunction(int32_t FuncId,
 // implementation. |Enable| defines whether we're enabling or disabling the
 // runtime XRay instrumentation.
 XRayPatchingStatus controlPatching(bool Enable) XRAY_NEVER_INSTRUMENT {
-  if (!__sanitizer::atomic_load(&XRayInitialized,
-                                __sanitizer::memory_order_acquire))
+  if (!atomic_load(&XRayInitialized,
+                                memory_order_acquire))
     return XRayPatchingStatus::NOT_INITIALIZED; // Not initialized.
 
   uint8_t NotPatching = false;
-  if (!__sanitizer::atomic_compare_exchange_strong(
-          &XRayPatching, &NotPatching, true, __sanitizer::memory_order_acq_rel))
+  if (!atomic_compare_exchange_strong(
+          &XRayPatching, &NotPatching, true, memory_order_acq_rel))
     return XRayPatchingStatus::ONGOING; // Already patching.
 
   uint8_t PatchingSuccess = false;
   auto XRayPatchingStatusResetter =
-      __sanitizer::at_scope_exit([&PatchingSuccess] {
+      at_scope_exit([&PatchingSuccess] {
         if (!PatchingSuccess)
-          __sanitizer::atomic_store(&XRayPatching, false,
-                                    __sanitizer::memory_order_release);
+          atomic_store(&XRayPatching, false,
+                                    memory_order_release);
       });
 
   XRaySledMap InstrMap;
   {
-    __sanitizer::SpinMutexLock Guard(&XRayInstrMapMutex);
+    SpinMutexLock Guard(&XRayInstrMapMutex);
     InstrMap = XRayInstrMap;
   }
   if (InstrMap.Entries == 0)
@@ -254,7 +286,7 @@ XRayPatchingStatus controlPatching(bool Enable) XRAY_NEVER_INSTRUMENT {
       reinterpret_cast<void *>(MinSled.Address & ~(PageSize - 1));
   size_t MProtectLen =
       (MaxSled.Address - reinterpret_cast<uptr>(PageAlignedAddr)) + cSledLength;
-  MProtectHelper Protector(PageAlignedAddr, MProtectLen);
+  MProtectHelper Protector(PageAlignedAddr, MProtectLen, PageSize);
   if (Protector.MakeWriteable() == -1) {
     Report("Failed mprotect: %d\n", errno);
     return XRayPatchingStatus::FAILED;
@@ -271,8 +303,8 @@ XRayPatchingStatus controlPatching(bool Enable) XRAY_NEVER_INSTRUMENT {
     }
     patchSled(Sled, Enable, FuncId);
   }
-  __sanitizer::atomic_store(&XRayPatching, false,
-                            __sanitizer::memory_order_release);
+  atomic_store(&XRayPatching, false,
+                            memory_order_release);
   PatchingSuccess = true;
   return XRayPatchingStatus::SUCCESS;
 }
@@ -281,7 +313,7 @@ XRayPatchingStatus mprotectAndPatchFunction(int32_t FuncId,
                                             bool Enable) XRAY_NEVER_INSTRUMENT {
   XRaySledMap InstrMap;
   {
-    __sanitizer::SpinMutexLock Guard(&XRayInstrMapMutex);
+    SpinMutexLock Guard(&XRayInstrMapMutex);
     InstrMap = XRayInstrMap;
   }
 
@@ -319,7 +351,7 @@ XRayPatchingStatus mprotectAndPatchFunction(int32_t FuncId,
       reinterpret_cast<void *>(MinSled.Address & ~(PageSize - 1));
   size_t MProtectLen =
       (MaxSled.Address - reinterpret_cast<uptr>(PageAlignedAddr)) + cSledLength;
-  MProtectHelper Protector(PageAlignedAddr, MProtectLen);
+  MProtectHelper Protector(PageAlignedAddr, MProtectLen, PageSize);
   if (Protector.MakeWriteable() == -1) {
     Report("Failed mprotect: %d\n", errno);
     return XRayPatchingStatus::FAILED;
@@ -338,12 +370,12 @@ using namespace __xray;
 
 int __xray_set_handler(void (*entry)(int32_t,
                                      XRayEntryType)) XRAY_NEVER_INSTRUMENT {
-  if (__sanitizer::atomic_load(&XRayInitialized,
-                               __sanitizer::memory_order_acquire)) {
+  if (atomic_load(&XRayInitialized,
+                               memory_order_acquire)) {
 
-    __sanitizer::atomic_store(&__xray::XRayPatchedFunction,
+    atomic_store(&__xray::XRayPatchedFunction,
                               reinterpret_cast<uintptr_t>(entry),
-                              __sanitizer::memory_order_release);
+                              memory_order_release);
     return 1;
   }
   return 0;
@@ -351,11 +383,11 @@ int __xray_set_handler(void (*entry)(int32_t,
 
 int __xray_set_customevent_handler(void (*entry)(void *, size_t))
     XRAY_NEVER_INSTRUMENT {
-  if (__sanitizer::atomic_load(&XRayInitialized,
-                               __sanitizer::memory_order_acquire)) {
-    __sanitizer::atomic_store(&__xray::XRayPatchedCustomEvent,
+  if (atomic_load(&XRayInitialized,
+                               memory_order_acquire)) {
+    atomic_store(&__xray::XRayPatchedCustomEvent,
                               reinterpret_cast<uintptr_t>(entry),
-                              __sanitizer::memory_order_release);
+                              memory_order_release);
     return 1;
   }
   return 0;
@@ -363,11 +395,11 @@ int __xray_set_customevent_handler(void (*entry)(void *, size_t))
 
 int __xray_set_typedevent_handler(void (*entry)(
     uint16_t, const void *, size_t)) XRAY_NEVER_INSTRUMENT {
-  if (__sanitizer::atomic_load(&XRayInitialized,
-                               __sanitizer::memory_order_acquire)) {
-    __sanitizer::atomic_store(&__xray::XRayPatchedTypedEvent,
+  if (atomic_load(&XRayInitialized,
+                               memory_order_acquire)) {
+    atomic_store(&__xray::XRayPatchedTypedEvent,
                               reinterpret_cast<uintptr_t>(entry),
-                              __sanitizer::memory_order_release);
+                              memory_order_release);
     return 1;
   }
   return 0;
@@ -389,8 +421,8 @@ uint16_t __xray_register_event_type(
     const char *const event_type) XRAY_NEVER_INSTRUMENT {
   TypeDescriptorMapType::Handle h(&TypeDescriptorAddressMap, (uptr)event_type);
   if (h.created()) {
-    h->type_id = __sanitizer::atomic_fetch_add(
-        &TypeEventDescriptorCounter, 1, __sanitizer::memory_order_acq_rel);
+    h->type_id = atomic_fetch_add(
+        &TypeEventDescriptorCounter, 1, memory_order_acq_rel);
     h->description_string_length = strnlen(event_type, 1024);
   }
   return h->type_id;
@@ -414,22 +446,22 @@ __xray_unpatch_function(int32_t FuncId) XRAY_NEVER_INSTRUMENT {
 }
 
 int __xray_set_handler_arg1(void (*entry)(int32_t, XRayEntryType, uint64_t)) {
-  if (!__sanitizer::atomic_load(&XRayInitialized,
-                                __sanitizer::memory_order_acquire))
+  if (!atomic_load(&XRayInitialized,
+                                memory_order_acquire))
     return 0;
 
   // A relaxed write might not be visible even if the current thread gets
   // scheduled on a different CPU/NUMA node.  We need to wait for everyone to
   // have this handler installed for consistency of collected data across CPUs.
-  __sanitizer::atomic_store(&XRayArgLogger, reinterpret_cast<uint64_t>(entry),
-                            __sanitizer::memory_order_release);
+  atomic_store(&XRayArgLogger, reinterpret_cast<uint64_t>(entry),
+                            memory_order_release);
   return 1;
 }
 
 int __xray_remove_handler_arg1() { return __xray_set_handler_arg1(nullptr); }
 
 uintptr_t __xray_function_address(int32_t FuncId) XRAY_NEVER_INSTRUMENT {
-  __sanitizer::SpinMutexLock Guard(&XRayInstrMapMutex);
+  SpinMutexLock Guard(&XRayInstrMapMutex);
   if (FuncId <= 0 || static_cast<size_t>(FuncId) > XRayInstrMap.Functions)
     return 0;
   return XRayInstrMap.SledsIndex[FuncId - 1].Begin->Function
@@ -443,6 +475,6 @@ uintptr_t __xray_function_address(int32_t FuncId) XRAY_NEVER_INSTRUMENT {
 }
 
 size_t __xray_max_function_id() XRAY_NEVER_INSTRUMENT {
-  __sanitizer::SpinMutexLock Guard(&XRayInstrMapMutex);
+  SpinMutexLock Guard(&XRayInstrMapMutex);
   return XRayInstrMap.Functions;
 }

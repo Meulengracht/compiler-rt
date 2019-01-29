@@ -1,9 +1,8 @@
 //===-- esan.cpp ----------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -163,15 +162,15 @@ static void initializeShadow() {
     VPrintf(1, "Shadow #%d: [%zx-%zx) (%zuGB)\n", i, ShadowStart, ShadowEnd,
             (ShadowEnd - ShadowStart) >> 30);
 
-    uptr Map;
+    uptr Map = 0;
     if (__esan_which_tool == ESAN_WorkingSet) {
       // We want to identify all shadow pages that are touched so we start
       // out inaccessible.
       Map = (uptr)MmapFixedNoAccess(ShadowStart, ShadowEnd- ShadowStart,
                                     "shadow");
     } else {
-      Map = (uptr)MmapFixedNoReserve(ShadowStart, ShadowEnd - ShadowStart,
-                                     "shadow");
+      if (MmapFixedNoReserve(ShadowStart, ShadowEnd - ShadowStart, "shadow"))
+        Map = ShadowStart;
     }
     if (Map != ShadowStart) {
       Printf("FATAL: EfficiencySanitizer failed to map its shadow memory.\n");

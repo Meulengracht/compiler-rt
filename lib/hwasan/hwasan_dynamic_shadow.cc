@@ -1,9 +1,8 @@
 //===-- hwasan_dynamic_shadow.cc --------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -13,6 +12,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "hwasan.h"
 #include "hwasan_dynamic_shadow.h"
 #include "hwasan_mapping.h"
 #include "sanitizer_common/sanitizer_common.h"
@@ -35,12 +35,16 @@ static void UnmapFromTo(uptr from, uptr to) {
   }
 }
 
-// Returns an address aligned to 8 pages, such that one page on the left and
-// shadow_size_bytes bytes on the right of it are mapped r/o.
+// Returns an address aligned to kShadowBaseAlignment, such that
+// 2**kShadowBaseAlingment on the left and shadow_size_bytes bytes on the right
+// of it are mapped no access.
 static uptr MapDynamicShadow(uptr shadow_size_bytes) {
   const uptr granularity = GetMmapGranularity();
-  const uptr alignment = granularity * SHADOW_GRANULARITY;
-  const uptr left_padding = granularity;
+  const uptr min_alignment = granularity << kShadowScale;
+  const uptr alignment = 1ULL << kShadowBaseAlignment;
+  CHECK_GE(alignment, min_alignment);
+
+  const uptr left_padding = 1ULL << kShadowBaseAlignment;
   const uptr shadow_size =
       RoundUpTo(shadow_size_bytes, granularity);
   const uptr map_size = shadow_size + left_padding + alignment;
@@ -58,8 +62,7 @@ static uptr MapDynamicShadow(uptr shadow_size_bytes) {
 
 }  // namespace __hwasan
 
-#if HWASAN_PREMAP_SHADOW
-
+#if SANITIZER_ANDROID
 extern "C" {
 
 INTERFACE_ATTRIBUTE void __hwasan_shadow();
@@ -117,16 +120,22 @@ void __hwasan_shadow();
 
 }  // extern "C"
 
-#endif  // HWASAN_PREMAP_SHADOW
-
 namespace __hwasan {
 
 uptr FindDynamicShadowStart(uptr shadow_size_bytes) {
-#if HWASAN_PREMAP_SHADOW
   if (IsPremapShadowAvailable())
     return FindPremappedShadowStart(shadow_size_bytes);
-#endif
   return MapDynamicShadow(shadow_size_bytes);
 }
 
 }  // namespace __hwasan
+#else
+namespace __hwasan {
+
+uptr FindDynamicShadowStart(uptr shadow_size_bytes) {
+  return MapDynamicShadow(shadow_size_bytes);
+}
+
+}  // namespace __hwasan
+#
+#endif  // SANITIZER_ANDROID

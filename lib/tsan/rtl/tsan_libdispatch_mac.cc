@@ -1,9 +1,8 @@
 //===-- tsan_libdispatch_mac.cc -------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -185,11 +184,8 @@ static void invoke_and_release_block(void *param) {
   TSAN_INTERCEPTOR(void, name, dispatch_queue_t q,                           \
                    DISPATCH_NOESCAPE dispatch_block_t block) {               \
     SCOPED_TSAN_INTERCEPTOR(name, q, block);                                 \
-    SCOPED_TSAN_INTERCEPTOR_USER_CALLBACK_START();                           \
-    dispatch_block_t heap_block = Block_copy(block);                         \
-    SCOPED_TSAN_INTERCEPTOR_USER_CALLBACK_END();                             \
     tsan_block_context_t new_context = {                                     \
-        q, heap_block, &invoke_and_release_block, false, true, barrier, 0};  \
+        q, block, &invoke_block, false, true, barrier, 0};                   \
     Release(thr, pc, (uptr)&new_context);                                    \
     SCOPED_TSAN_INTERCEPTOR_USER_CALLBACK_START();                           \
     REAL(name##_f)(q, &new_context, dispatch_callback_wrap);                 \

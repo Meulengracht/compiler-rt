@@ -1,9 +1,8 @@
 //===- FuzzerIOPosix.cpp - IO utils for Posix. ----------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // IO functions implementation using Posix API.
@@ -44,6 +43,13 @@ size_t FileSize(const std::string &Path) {
   if (stat(Path.c_str(), &St))
     return 0;
   return St.st_size;
+}
+
+std::string Basename(const std::string &Path) {
+  size_t Pos = Path.rfind(GetSeparator());
+  if (Pos == std::string::npos) return Path;
+  assert(Pos < Path.size());
+  return Path.substr(Pos + 1);
 }
 
 void ListFilesInDirRecursive(const std::string &Dir, long *Epoch,

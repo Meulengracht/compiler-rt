@@ -1,9 +1,8 @@
 //===-- asan_errors.h -------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -110,8 +109,8 @@ struct ErrorFreeNotMalloced : ErrorBase {
 
 struct ErrorAllocTypeMismatch : ErrorBase {
   const BufferedStackTrace *dealloc_stack;
-  HeapAddressDescription addr_description;
   AllocType alloc_type, dealloc_type;
+  AddressDescription addr_description;
 
   ErrorAllocTypeMismatch() = default;  // (*)
   ErrorAllocTypeMismatch(u32 tid, BufferedStackTrace *stack, uptr addr,
@@ -119,9 +118,8 @@ struct ErrorAllocTypeMismatch : ErrorBase {
       : ErrorBase(tid, 10, "alloc-dealloc-mismatch"),
         dealloc_stack(stack),
         alloc_type(alloc_type_),
-        dealloc_type(dealloc_type_) {
-    GetHeapAddressInformation(addr, 1, &addr_description);
-  };
+        dealloc_type(dealloc_type_),
+        addr_description(addr, 1, false) {}
   void Print();
 };
 
@@ -186,6 +184,21 @@ struct ErrorInvalidAllocationAlignment : ErrorBase {
                                   uptr alignment_)
       : ErrorBase(tid, 10, "invalid-allocation-alignment"),
         stack(stack_),
+        alignment(alignment_) {}
+  void Print();
+};
+
+struct ErrorInvalidAlignedAllocAlignment : ErrorBase {
+  const BufferedStackTrace *stack;
+  uptr size;
+  uptr alignment;
+
+  ErrorInvalidAlignedAllocAlignment() = default;  // (*)
+  ErrorInvalidAlignedAllocAlignment(u32 tid, BufferedStackTrace *stack_,
+                                    uptr size_, uptr alignment_)
+      : ErrorBase(tid, 10, "invalid-aligned-alloc-alignment"),
+        stack(stack_),
+        size(size_),
         alignment(alignment_) {}
   void Print();
 };
@@ -360,6 +373,7 @@ struct ErrorGeneric : ErrorBase {
   macro(CallocOverflow)                         \
   macro(PvallocOverflow)                        \
   macro(InvalidAllocationAlignment)             \
+  macro(InvalidAlignedAllocAlignment)           \
   macro(InvalidPosixMemalignAlignment)          \
   macro(AllocationSizeTooBig)                   \
   macro(RssLimitExceeded)                       \
@@ -398,6 +412,7 @@ struct ErrorDescription {
   };
 
   ErrorDescription() { internal_memset(this, 0, sizeof(*this)); }
+  explicit ErrorDescription(LinkerInitialized) {}
   ASAN_FOR_EACH_ERROR_KIND(ASAN_ERROR_DESCRIPTION_CONSTRUCTOR)
 
   bool IsValid() { return kind != kErrorKindInvalid; }

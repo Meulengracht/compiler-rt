@@ -1,9 +1,8 @@
 //===- FuzzerDriver.cpp - FuzzerDriver function and flags -----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // FuzzerDriver and flag parsing.
@@ -29,7 +28,12 @@
 
 // This function should be present in the libFuzzer so that the client
 // binary can test for its existence.
+#if LIBFUZZER_MSVC
+extern "C" void __libfuzzer_is_present() {}
+#pragma comment(linker, "/include:__libfuzzer_is_present")
+#else
 extern "C" __attribute__((used)) void __libfuzzer_is_present() {}
+#endif  // LIBFUZZER_MSVC
 
 namespace fuzzer {
 
@@ -537,6 +541,8 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   EF = new ExternalFunctions();
   if (EF->LLVMFuzzerInitialize)
     EF->LLVMFuzzerInitialize(argc, argv);
+  if (EF->__msan_scoped_disable_interceptor_checks)
+    EF->__msan_scoped_disable_interceptor_checks();
   const Vector<std::string> Args(*argv, *argv + *argc);
   assert(!Args.empty());
   ProgName = new std::string(Args[0]);
@@ -616,13 +622,14 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Options.PrintCorpusStats = Flags.print_corpus_stats;
   Options.PrintCoverage = Flags.print_coverage;
   Options.DumpCoverage = Flags.dump_coverage;
-  Options.UseFeatureFrequency = Flags.use_feature_frequency;
   if (Flags.exit_on_src_pos)
     Options.ExitOnSrcPos = Flags.exit_on_src_pos;
   if (Flags.exit_on_item)
     Options.ExitOnItem = Flags.exit_on_item;
   if (Flags.focus_function)
     Options.FocusFunction = Flags.focus_function;
+  if (Flags.data_flow_trace)
+    Options.DataFlowTrace = Flags.data_flow_trace;
 
   unsigned Seed = Flags.seed;
   // Initialize Seed.

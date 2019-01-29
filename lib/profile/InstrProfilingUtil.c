@@ -1,9 +1,8 @@
 /*===- InstrProfilingUtil.c - Support library for PGO instrumentation -----===*\
 |*
-|*                     The LLVM Compiler Infrastructure
-|*
-|* This file is distributed under the University of Illinois Open Source
-|* License. See LICENSE.TXT for details.
+|* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+|* See https://llvm.org/LICENSE.txt for license information.
+|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 |*
 \*===----------------------------------------------------------------------===*/
 
@@ -35,6 +34,8 @@
 #include "InstrProfiling.h"
 #include "InstrProfilingUtil.h"
 
+COMPILER_RT_WEAK unsigned lprofDirMode = 0755;
+
 COMPILER_RT_VISIBILITY
 void __llvm_profile_recursive_mkdir(char *path) {
   int i;
@@ -47,11 +48,18 @@ void __llvm_profile_recursive_mkdir(char *path) {
 #ifdef _WIN32
     _mkdir(path);
 #else
-    mkdir(path, 0755); /* Some of these will fail, ignore it. */
+    /* Some of these will fail, ignore it. */
+    mkdir(path, __llvm_profile_get_dir_mode());
 #endif
     path[i] = save;
   }
 }
+
+COMPILER_RT_VISIBILITY
+void __llvm_profile_set_dir_mode(unsigned Mode) { lprofDirMode = Mode; }
+
+COMPILER_RT_VISIBILITY
+unsigned __llvm_profile_get_dir_mode(void) { return lprofDirMode; }
 
 #if COMPILER_RT_HAS_ATOMICS != 1
 COMPILER_RT_VISIBILITY
@@ -243,23 +251,21 @@ lprofApplyPathPrefix(char *Dest, const char *PathStr, const char *Prefix,
 
 COMPILER_RT_VISIBILITY const char *
 lprofFindFirstDirSeparator(const char *Path) {
-  const char *Sep;
-  Sep = strchr(Path, DIR_SEPARATOR);
-  if (Sep)
-    return Sep;
+  const char *Sep = strchr(Path, DIR_SEPARATOR);
 #if defined(DIR_SEPARATOR_2)
-  Sep = strchr(Path, DIR_SEPARATOR_2);
+  const char *Sep2 = strchr(Path, DIR_SEPARATOR_2);
+  if (Sep2 && (!Sep || Sep2 < Sep))
+    Sep = Sep2;
 #endif
   return Sep;
 }
 
 COMPILER_RT_VISIBILITY const char *lprofFindLastDirSeparator(const char *Path) {
-  const char *Sep;
-  Sep = strrchr(Path, DIR_SEPARATOR);
-  if (Sep)
-    return Sep;
+  const char *Sep = strrchr(Path, DIR_SEPARATOR);
 #if defined(DIR_SEPARATOR_2)
-  Sep = strrchr(Path, DIR_SEPARATOR_2);
+  const char *Sep2 = strrchr(Path, DIR_SEPARATOR_2);
+  if (Sep2 && (!Sep || Sep2 > Sep))
+    Sep = Sep2;
 #endif
   return Sep;
 }

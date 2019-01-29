@@ -1,9 +1,8 @@
 //===- FuzzerLoop.cpp - Fuzzer's main loop --------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // Fuzzer's main loop.
@@ -42,6 +41,8 @@ static const size_t kMaxUnitSizeToPrint = 256;
 thread_local bool Fuzzer::IsMyThread;
 
 SharedMemoryRegion SMR;
+
+bool RunningUserCallback = false;
 
 // Only one Fuzzer per process.
 static Fuzzer *F;
@@ -148,7 +149,7 @@ Fuzzer::Fuzzer(UserCallback CB, InputCorpus &Corpus, MutationDispatcher &MD,
   if (Options.DetectLeaks && EF->__sanitizer_install_malloc_and_free_hooks)
     EF->__sanitizer_install_malloc_and_free_hooks(MallocHook, FreeHook);
   TPC.SetUseCounters(Options.UseCounters);
-  TPC.SetUseValueProfile(Options.UseValueProfile);
+  TPC.SetUseValueProfileMask(Options.UseValueProfile);
 
   if (Options.Verbosity)
     TPC.PrintModuleInfo();
@@ -160,6 +161,7 @@ Fuzzer::Fuzzer(UserCallback CB, InputCorpus &Corpus, MutationDispatcher &MD,
   CurrentUnitSize = 0;
   memset(BaseSha1, 0, sizeof(BaseSha1));
   TPC.SetFocusFunction(Options.FocusFunction);
+  DFT.Init(Options.DataFlowTrace, Options.FocusFunction);
 }
 
 Fuzzer::~Fuzzer() {}
@@ -178,6 +180,7 @@ void Fuzzer::StaticDeathCallback() {
 void Fuzzer::DumpCurrentUnit(const char *Prefix) {
   if (!CurrentUnitData)
     return; // Happens when running individual inputs.
+  ScopedDisableMsanInterceptorChecks S;
   MD.PrintMutationSequence();
   Printf("; base unit: %s\n", Sha1ToString(BaseSha1).c_str());
   size_t UnitSize = CurrentUnitSize;
@@ -241,7 +244,7 @@ void Fuzzer::CrashCallback() {
 }
 
 void Fuzzer::ExitCallback() {
-  if (!RunningCB)
+  if (!RunningUserCallback)
     return; // This exit did not come from the user callback
   if (EF->__sanitizer_acquire_crash_state &&
       !EF->__sanitizer_acquire_crash_state())
@@ -271,11 +274,12 @@ NO_SANITIZE_MEMORY
 void Fuzzer::AlarmCallback() {
   assert(Options.UnitTimeoutSec > 0);
   // In Windows Alarm callback is executed by a different thread.
-#if !LIBFUZZER_WINDOWS
+  // NetBSD's current behavior needs this change too.
+#if !LIBFUZZER_WINDOWS && !LIBFUZZER_NETBSD
   if (!InFuzzingThread())
     return;
 #endif
-  if (!RunningCB)
+  if (!RunningUserCallback)
     return; // We have not started running units yet.
   size_t Seconds =
       duration_cast<seconds>(system_clock::now() - UnitStartTime).count();
@@ -453,8 +457,6 @@ bool Fuzzer::RunOne(const uint8_t *Data, size_t Size, bool MayDeleteFile,
   size_t FoundUniqFeaturesOfII = 0;
   size_t NumUpdatesBefore = Corpus.NumFeatureUpdates();
   TPC.CollectFeatures([&](size_t Feature) {
-    if (Options.UseFeatureFrequency)
-      Corpus.UpdateFeatureFrequency(Feature);
     if (Corpus.AddFeature(Feature, Size, Options.Shrink))
       UniqFeatureSetTmp.push_back(Feature);
     if (Options.ReduceInputs && II)
@@ -469,11 +471,11 @@ bool Fuzzer::RunOne(const uint8_t *Data, size_t Size, bool MayDeleteFile,
   if (NumNewFeatures) {
     TPC.UpdateObservedPCs();
     Corpus.AddToCorpus({Data, Data + Size}, NumNewFeatures, MayDeleteFile,
-                       TPC.ObservedFocusFunction(),
-                       UniqFeatureSetTmp);
+                       TPC.ObservedFocusFunction(), UniqFeatureSetTmp, DFT, II);
     return true;
   }
   if (II && FoundUniqFeaturesOfII &&
+      II->DataFlowTraceForFocusFunction.empty() &&
       FoundUniqFeaturesOfII == II->UniqFeatureSet.size() &&
       II->U.size() > Size) {
     Corpus.Replace(II, {Data, Data + Size});
@@ -516,19 +518,24 @@ void Fuzzer::ExecuteCallback(const uint8_t *Data, size_t Size) {
   // so that we reliably find buffer overflows in it.
   uint8_t *DataCopy = new uint8_t[Size];
   memcpy(DataCopy, Data, Size);
+  if (EF->__msan_unpoison)
+    EF->__msan_unpoison(DataCopy, Size);
   if (CurrentUnitData && CurrentUnitData != Data)
     memcpy(CurrentUnitData, Data, Size);
   CurrentUnitSize = Size;
-  AllocTracer.Start(Options.TraceMalloc);
-  UnitStartTime = system_clock::now();
-  TPC.ResetMaps();
-  RunningCB = true;
-  int Res = CB(DataCopy, Size);
-  RunningCB = false;
-  UnitStopTime = system_clock::now();
-  (void)Res;
-  assert(Res == 0);
-  HasMoreMallocsThanFrees = AllocTracer.Stop();
+  {
+    ScopedEnableMsanInterceptorChecks S;
+    AllocTracer.Start(Options.TraceMalloc);
+    UnitStartTime = system_clock::now();
+    TPC.ResetMaps();
+    RunningUserCallback = true;
+    int Res = CB(DataCopy, Size);
+    RunningUserCallback = false;
+    UnitStopTime = system_clock::now();
+    (void)Res;
+    assert(Res == 0);
+    HasMoreMallocsThanFrees = AllocTracer.Stop();
+  }
   if (!LooseMemeq(DataCopy, Data, Size))
     CrashOnOverwrittenData();
   CurrentUnitSize = 0;
@@ -629,8 +636,6 @@ void Fuzzer::MutateAndTestOne() {
   MD.StartMutationSequence();
 
   auto &II = Corpus.ChooseUnitToMutate(MD.GetRand());
-  if (Options.UseFeatureFrequency)
-    Corpus.UpdateFeatureFrequencyScore(&II);
   const auto &U = II.U;
   memcpy(BaseSha1, II.Sha1, sizeof(BaseSha1));
   assert(CurrentUnitData);
@@ -649,7 +654,12 @@ void Fuzzer::MutateAndTestOne() {
       break;
     MaybeExitGracefully();
     size_t NewSize = 0;
-    NewSize = MD.Mutate(CurrentUnitData, Size, CurrentMaxMutationLen);
+    if (II.HasFocusFunction && !II.DataFlowTraceForFocusFunction.empty() &&
+        Size <= CurrentMaxMutationLen)
+      NewSize = MD.MutateWithMask(CurrentUnitData, Size, Size,
+                                  II.DataFlowTraceForFocusFunction);
+    else
+      NewSize = MD.Mutate(CurrentUnitData, Size, CurrentMaxMutationLen);
     assert(NewSize > 0 && "Mutator returned empty unit");
     assert(NewSize <= CurrentMaxMutationLen && "Mutator return oversized unit");
     Size = NewSize;
@@ -742,6 +752,9 @@ void Fuzzer::ReadAndExecuteSeedCorpora(const Vector<std::string> &CorpusDirs) {
   if (!Options.FocusFunction.empty())
     Printf("INFO: %zd/%zd inputs touch the focus function\n",
            Corpus.NumInputsThatTouchFocusFunction(), Corpus.size());
+  if (!Options.DataFlowTrace.empty())
+    Printf("INFO: %zd/%zd inputs have the Data Flow Trace\n",
+           Corpus.NumInputsWithDataFlowTrace(), Corpus.size());
 
   if (Corpus.empty() && Options.MaxNumberOfRuns) {
     Printf("ERROR: no interesting inputs were found. "
@@ -752,6 +765,7 @@ void Fuzzer::ReadAndExecuteSeedCorpora(const Vector<std::string> &CorpusDirs) {
 
 void Fuzzer::Loop(const Vector<std::string> &CorpusDirs) {
   ReadAndExecuteSeedCorpora(CorpusDirs);
+  DFT.Clear();  // No need for DFT any more.
   TPC.SetPrintNewPCs(Options.PrintNewCovPcs);
   TPC.SetPrintNewFuncs(Options.PrintNewCovFuncs);
   system_clock::time_point LastCorpusReload = system_clock::now();
@@ -837,14 +851,14 @@ void Fuzzer::AnnounceOutput(const uint8_t *Data, size_t Size) {
 
 extern "C" {
 
-__attribute__((visibility("default"))) size_t
+ATTRIBUTE_INTERFACE size_t
 LLVMFuzzerMutate(uint8_t *Data, size_t Size, size_t MaxSize) {
   assert(fuzzer::F);
   return fuzzer::F->GetMD().DefaultMutate(Data, Size, MaxSize);
 }
 
 // Experimental
-__attribute__((visibility("default"))) void
+ATTRIBUTE_INTERFACE void
 LLVMFuzzerAnnounceOutput(const uint8_t *Data, size_t Size) {
   assert(fuzzer::F);
   fuzzer::F->AnnounceOutput(Data, Size);

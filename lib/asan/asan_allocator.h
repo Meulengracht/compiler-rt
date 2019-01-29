@@ -1,9 +1,8 @@
 //===-- asan_allocator.h ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -148,6 +147,7 @@ const uptr kAllocatorSpace = 0x600000000000ULL;
 const uptr kAllocatorSize  =  0x40000000000ULL;  // 4T.
 typedef DefaultSizeClassMap SizeClassMap;
 # endif
+template <typename AddressSpaceViewTy>
 struct AP64 {  // Allocator64 parameters. Deliberately using a short name.
   static const uptr kSpaceBeg = kAllocatorSpace;
   static const uptr kSpaceSize = kAllocatorSize;
@@ -155,37 +155,58 @@ struct AP64 {  // Allocator64 parameters. Deliberately using a short name.
   typedef __asan::SizeClassMap SizeClassMap;
   typedef AsanMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
+  using AddressSpaceView = AddressSpaceViewTy;
 };
 
-typedef SizeClassAllocator64<AP64> PrimaryAllocator;
+template <typename AddressSpaceView>
+using PrimaryAllocatorASVT = SizeClassAllocator64<AP64<AddressSpaceView>>;
+using PrimaryAllocator = PrimaryAllocatorASVT<LocalAddressSpaceView>;
 #else  // Fallback to SizeClassAllocator32.
 static const uptr kRegionSizeLog = 20;
 static const uptr kNumRegions = SANITIZER_MMAP_RANGE_SIZE >> kRegionSizeLog;
 # if SANITIZER_WORDSIZE == 32
-typedef FlatByteMap<kNumRegions> ByteMap;
+template <typename AddressSpaceView>
+using ByteMapASVT = FlatByteMap<kNumRegions, AddressSpaceView>;
 # elif SANITIZER_WORDSIZE == 64
-typedef TwoLevelByteMap<(kNumRegions >> 12), 1 << 12> ByteMap;
+template <typename AddressSpaceView>
+using ByteMapASVT =
+    TwoLevelByteMap<(kNumRegions >> 12), 1 << 12, AddressSpaceView>;
 # endif
 typedef CompactSizeClassMap SizeClassMap;
+template <typename AddressSpaceViewTy>
 struct AP32 {
   static const uptr kSpaceBeg = 0;
   static const u64 kSpaceSize = SANITIZER_MMAP_RANGE_SIZE;
   static const uptr kMetadataSize = 16;
   typedef __asan::SizeClassMap SizeClassMap;
   static const uptr kRegionSizeLog = __asan::kRegionSizeLog;
-  typedef __asan::ByteMap ByteMap;
+  using AddressSpaceView = AddressSpaceViewTy;
+  using ByteMap = __asan::ByteMapASVT<AddressSpaceView>;
   typedef AsanMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
 };
-typedef SizeClassAllocator32<AP32> PrimaryAllocator;
+template <typename AddressSpaceView>
+using PrimaryAllocatorASVT = SizeClassAllocator32<AP32<AddressSpaceView> >;
+using PrimaryAllocator = PrimaryAllocatorASVT<LocalAddressSpaceView>;
 #endif  // SANITIZER_CAN_USE_ALLOCATOR64
 
 static const uptr kNumberOfSizeClasses = SizeClassMap::kNumClasses;
-typedef SizeClassAllocatorLocalCache<PrimaryAllocator> AllocatorCache;
-typedef LargeMmapAllocator<AsanMapUnmapCallback> SecondaryAllocator;
-typedef CombinedAllocator<PrimaryAllocator, AllocatorCache,
-    SecondaryAllocator> AsanAllocator;
+template <typename AddressSpaceView>
+using AllocatorCacheASVT =
+    SizeClassAllocatorLocalCache<PrimaryAllocatorASVT<AddressSpaceView>>;
+using AllocatorCache = AllocatorCacheASVT<LocalAddressSpaceView>;
 
+template <typename AddressSpaceView>
+using SecondaryAllocatorASVT =
+    LargeMmapAllocator<AsanMapUnmapCallback, DefaultLargeMmapAllocatorPtrArray,
+                       AddressSpaceView>;
+template <typename AddressSpaceView>
+using AsanAllocatorASVT =
+    CombinedAllocator<PrimaryAllocatorASVT<AddressSpaceView>,
+                      AllocatorCacheASVT<AddressSpaceView>,
+                      SecondaryAllocatorASVT<AddressSpaceView>,
+                      AddressSpaceView>;
+using AsanAllocator = AsanAllocatorASVT<LocalAddressSpaceView>;
 
 struct AsanThreadLocalMallocStorage {
   uptr quarantine_cache[16];
@@ -208,6 +229,7 @@ void *asan_realloc(void *p, uptr size, BufferedStackTrace *stack);
 void *asan_valloc(uptr size, BufferedStackTrace *stack);
 void *asan_pvalloc(uptr size, BufferedStackTrace *stack);
 
+void *asan_aligned_alloc(uptr alignment, uptr size, BufferedStackTrace *stack);
 int asan_posix_memalign(void **memptr, uptr alignment, uptr size,
                         BufferedStackTrace *stack);
 uptr asan_malloc_usable_size(const void *ptr, uptr pc, uptr bp);

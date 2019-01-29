@@ -1,9 +1,8 @@
 //===-- scudo_utils.cpp -----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -50,6 +49,9 @@ FORMAT(1, 2) void NORETURN dieWithMessage(const char *Format, ...) {
   internal_memcpy(Message, ScudoError, PrefixSize);
   VSNPrintf(Message + PrefixSize, sizeof(Message) - PrefixSize, Format, Args);
   va_end(Args);
+  LogMessageOnPrintf(Message);
+  if (common_flags()->abort_on_error)
+    SetAbortMessage(Message);
   RawWrite(Message);
   Die();
 }

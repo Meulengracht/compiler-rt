@@ -1,9 +1,8 @@
 //===-- asan_allocator.cc -------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -923,6 +922,17 @@ void *asan_memalign(uptr alignment, uptr size, BufferedStackTrace *stack,
   }
   return SetErrnoOnNull(
       instance.Allocate(size, alignment, stack, alloc_type, true));
+}
+
+void *asan_aligned_alloc(uptr alignment, uptr size, BufferedStackTrace *stack) {
+  if (UNLIKELY(!CheckAlignedAllocAlignmentAndSize(alignment, size))) {
+    errno = errno_EINVAL;
+    if (AllocatorMayReturnNull())
+      return nullptr;
+    ReportInvalidAlignedAllocAlignment(size, alignment, stack);
+  }
+  return SetErrnoOnNull(
+      instance.Allocate(size, alignment, stack, FROM_MALLOC, true));
 }
 
 int asan_posix_memalign(void **memptr, uptr alignment, uptr size,

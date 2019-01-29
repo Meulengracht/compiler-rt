@@ -1,9 +1,8 @@
 /*===- DataFlow.cpp - a standalone DataFlow tracer                  -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // An experimental data-flow tracer for fuzz targets.
@@ -69,6 +68,7 @@ static const uintptr_t *FuncsBeg;
 static __thread size_t CurrentFunc;
 static dfsan_label *FuncLabels;  // Array of NumFuncs elements.
 static char *PrintableStringForLabel;  // InputLen + 2 bytes.
+static bool LabelSeen[1 << 8 * sizeof(dfsan_label)];
 
 // Prints all instrumented functions.
 static int PrintFunctions() {
@@ -89,7 +89,11 @@ static int PrintFunctions() {
   return 0;
 }
 
-static void SetBytesForLabel(dfsan_label L, char *Bytes) {
+extern "C"
+void SetBytesForLabel(dfsan_label L, char *Bytes) {
+  if (LabelSeen[L])
+    return;
+  LabelSeen[L] = true;
   assert(L);
   if (L <= InputLen + 1) {
     Bytes[L - 1] = '1';
@@ -103,6 +107,7 @@ static void SetBytesForLabel(dfsan_label L, char *Bytes) {
 static char *GetPrintableStringForLabel(dfsan_label L) {
   memset(PrintableStringForLabel, '0', InputLen + 1);
   PrintableStringForLabel[InputLen + 1] = 0;
+  memset(LabelSeen, 0, sizeof(LabelSeen));
   SetBytesForLabel(L, PrintableStringForLabel);
   return PrintableStringForLabel;
 }

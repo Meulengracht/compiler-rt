@@ -1,9 +1,8 @@
 //===-- asan_win.cc -------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -159,6 +158,14 @@ INTERCEPTOR_WINAPI(DWORD, CreateThread,
 namespace __asan {
 
 void InitializePlatformInterceptors() {
+  // The interceptors were not designed to be removable, so we have to keep this
+  // module alive for the life of the process.
+  HMODULE pinned;
+  CHECK(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_PIN,
+                           (LPCWSTR)&InitializePlatformInterceptors,
+                           &pinned));
+
   ASAN_INTERCEPT_FUNC(CreateThread);
   ASAN_INTERCEPT_FUNC(SetUnhandledExceptionFilter);
 
@@ -312,6 +319,13 @@ int __asan_set_seh_filter() {
   if (prev_seh_handler != &SEHHandler)
     default_seh_handler = prev_seh_handler;
   return 0;
+}
+
+bool HandleDlopenInit() {
+  // Not supported on this platform.
+  static_assert(!SANITIZER_SUPPORTS_INIT_FOR_DLOPEN,
+                "Expected SANITIZER_SUPPORTS_INIT_FOR_DLOPEN to be false");
+  return false;
 }
 
 #if !ASAN_DYNAMIC

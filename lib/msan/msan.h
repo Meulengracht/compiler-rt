@@ -1,9 +1,8 @@
 //===-- msan.h --------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -315,14 +314,6 @@ void PrintWarningWithOrigin(uptr pc, uptr bp, u32 origin);
 
 void GetStackTrace(BufferedStackTrace *stack, uptr max_s, uptr pc, uptr bp,
                    void *context, bool request_fast_unwind);
-
-void ReportUMR(StackTrace *stack, u32 origin);
-void ReportExpectedUMRNotFound(StackTrace *stack);
-void ReportStats();
-void ReportAtExitStatistics();
-void DescribeMemoryRange(const void *x, uptr size);
-void ReportUMRInsideAddressRange(const char *what, const void *start, uptr size,
-                                 uptr offset);
 
 // Unpoison first n function arguments.
 void UnpoisonParam(uptr n);

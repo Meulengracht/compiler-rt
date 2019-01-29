@@ -1,9 +1,15 @@
-/* This file is distributed under the University of Illinois Open Source
- * License. See LICENSE.TXT for details.
+/* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ * See https://llvm.org/LICENSE.txt for license information.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  */
 
 #include "DD.h"
 #include "../int_math.h"
+// Use DOUBLE_PRECISION because the soft-fp method we use is logb (on the upper
+// half of the long doubles), even though this file defines complex division for
+// 128-bit floats.
+#define DOUBLE_PRECISION
+#include "../fp_lib.h"
 
 #if !defined(CRT_INFINITY) && defined(HUGE_VAL)
 #define CRT_INFINITY HUGE_VAL
@@ -21,9 +27,10 @@ __divtc3(long double a, long double b, long double c, long double d)
 	DD dDD = { .ld = d };
 	
 	int ilogbw = 0;
-	const double logbw = crt_logb(crt_fmax(crt_fabs(cDD.s.hi), crt_fabs(dDD.s.hi) ));
-	
-	if (crt_isfinite(logbw))
+	const double logbw = __compiler_rt_logb(
+		crt_fmax(crt_fabs(cDD.s.hi), crt_fabs(dDD.s.hi)));
+
+        if (crt_isfinite(logbw))
 	{
 		ilogbw = (int)logbw;
 		

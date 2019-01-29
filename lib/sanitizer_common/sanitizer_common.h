@@ -1,9 +1,8 @@
 //===-- sanitizer_common.h --------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -61,6 +60,15 @@ INLINE int Verbosity() {
   return atomic_load(&current_verbosity, memory_order_relaxed);
 }
 
+#if SANITIZER_ANDROID
+INLINE uptr GetPageSize() {
+// Android post-M sysconf(_SC_PAGESIZE) crashes if called from .preinit_array.
+  return 4096;
+}
+INLINE uptr GetPageSizeCached() {
+  return 4096;
+}
+#else
 uptr GetPageSize();
 extern uptr PageSizeCached;
 INLINE uptr GetPageSizeCached() {
@@ -68,11 +76,13 @@ INLINE uptr GetPageSizeCached() {
     PageSizeCached = GetPageSize();
   return PageSizeCached;
 }
+#endif
 uptr GetMmapGranularity();
 uptr GetMaxVirtualAddress();
 uptr GetMaxUserVirtualAddress();
 // Threads
 tid_t GetTid();
+int TgKill(pid_t pid, tid_t tid, int sig);
 uptr GetThreadSelf();
 void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
                                 uptr *stack_bottom);
@@ -88,8 +98,8 @@ void UnmapOrDie(void *addr, uptr size);
 // Behaves just like MmapOrDie, but tolerates out of memory condition, in that
 // case returns nullptr.
 void *MmapOrDieOnFatalError(uptr size, const char *mem_type);
-void *MmapFixedNoReserve(uptr fixed_addr, uptr size,
-                         const char *name = nullptr);
+bool MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name = nullptr)
+     WARN_UNUSED_RESULT;
 void *MmapNoReserveOrDie(uptr size, const char *mem_type);
 void *MmapFixedOrDie(uptr fixed_addr, uptr size);
 // Behaves just like MmapFixedOrDie, but tolerates out of memory condition, in
@@ -120,8 +130,8 @@ void ReleaseMemoryPagesToOS(uptr beg, uptr end);
 void IncreaseTotalMmap(uptr size);
 void DecreaseTotalMmap(uptr size);
 uptr GetRSS();
-void NoHugePagesInRegion(uptr addr, uptr length);
-void DontDumpShadowMemory(uptr addr, uptr length);
+bool NoHugePagesInRegion(uptr addr, uptr length);
+bool DontDumpShadowMemory(uptr addr, uptr length);
 // Check if the built VMA size matches the runtime one.
 void CheckVMASize();
 void RunMallocHooks(const void *ptr, uptr size);
@@ -221,7 +231,10 @@ bool SetEnv(const char *name, const char *value);
 
 u32 GetUid();
 void ReExec();
+void CheckASLR();
+void CheckMPROTECT();
 char **GetArgv();
+char **GetEnviron();
 void PrintCmdline();
 bool StackSizeIsUnlimited();
 uptr GetStackSizeLimitInBytes();
@@ -638,18 +651,22 @@ enum ModuleArch {
 
 // Opens the file 'file_name" and reads up to 'max_len' bytes.
 // The resulting buffer is mmaped and stored in '*buff'.
+// Returns true if file was successfully opened and read.
+bool ReadFileToVector(const char *file_name,
+                      InternalMmapVectorNoCtor<char> *buff,
+                      uptr max_len = 1 << 26, error_t *errno_p = nullptr);
+
+// Opens the file 'file_name" and reads up to 'max_len' bytes.
+// This function is less I/O efficient than ReadFileToVector as it may reread
+// file multiple times to avoid mmap during read attempts. It's used to read
+// procmap, so short reads with mmap in between can produce inconsistent result.
+// The resulting buffer is mmaped and stored in '*buff'.
 // The size of the mmaped region is stored in '*buff_size'.
 // The total number of read bytes is stored in '*read_len'.
 // Returns true if file was successfully opened and read.
 bool ReadFileToBuffer(const char *file_name, char **buff, uptr *buff_size,
                       uptr *read_len, uptr max_len = 1 << 26,
                       error_t *errno_p = nullptr);
-// Opens the file 'file_name" and reads up to 'max_len' bytes.
-// The resulting buffer is mmaped and stored in '*buff'.
-// Returns true if file was successfully opened and read.
-bool ReadFileToBuffer(const char *file_name,
-                      InternalMmapVectorNoCtor<char> *buff,
-                      uptr max_len = 1 << 26, error_t *errno_p = nullptr);
 
 // When adding a new architecture, don't forget to also update
 // script/asan_symbolize.py and sanitizer_symbolizer_libcdep.cc.
@@ -891,6 +908,7 @@ struct SignalContext {
   bool IsMemoryAccess() const;
 };
 
+void InitializePlatformEarly();
 void MaybeReexec();
 
 template <typename Fn>

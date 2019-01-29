@@ -1,9 +1,8 @@
 //===-- sanitizer_platform.h ------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -235,7 +234,12 @@
 #if defined(__mips__)
 # define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 40)
 #elif defined(__aarch64__)
-# define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 48)
+# if SANITIZER_MAC
+// Darwin iOS/ARM64 has a 36-bit VMA, 64GiB VM
+#  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 36)
+# else
+#  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 48)
+# endif
 #else
 # define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 47)
 #endif
@@ -268,12 +272,6 @@
 # define SANITIZER_POINTER_FORMAT_LENGTH FIRST_32_SECOND_64(8, 10)
 #else
 # define SANITIZER_POINTER_FORMAT_LENGTH FIRST_32_SECOND_64(8, 12)
-#endif
-
-// Assume obsolete RPC headers are available by default
-#if !defined(HAVE_RPC_XDR_H) && !defined(HAVE_TIRPC_RPC_XDR_H)
-# define HAVE_RPC_XDR_H (SANITIZER_LINUX && !SANITIZER_ANDROID)
-# define HAVE_TIRPC_RPC_XDR_H 0
 #endif
 
 /// \macro MSC_PREREQ
@@ -335,6 +333,15 @@
 #define SANITIZER_SYMBOLIZER_MARKUP 1
 #else
 #define SANITIZER_SYMBOLIZER_MARKUP 0
+#endif
+
+// Enable ability to support sanitizer initialization that is
+// compatible with the sanitizer library being loaded via
+// `dlopen()`.
+#if SANITIZER_MAC
+#define SANITIZER_SUPPORTS_INIT_FOR_DLOPEN 1
+#else
+#define SANITIZER_SUPPORTS_INIT_FOR_DLOPEN 0
 #endif
 
 #endif // SANITIZER_PLATFORM_H

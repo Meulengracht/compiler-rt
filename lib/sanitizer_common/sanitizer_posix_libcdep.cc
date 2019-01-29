@@ -1,9 +1,8 @@
 //===-- sanitizer_posix_libcdep.cc ----------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -69,16 +68,22 @@ void ReleaseMemoryPagesToOS(uptr beg, uptr end) {
             SANITIZER_MADVISE_DONTNEED);
 }
 
-void NoHugePagesInRegion(uptr addr, uptr size) {
+bool NoHugePagesInRegion(uptr addr, uptr size) {
 #ifdef MADV_NOHUGEPAGE  // May not be defined on old systems.
-  madvise((void *)addr, size, MADV_NOHUGEPAGE);
+  return madvise((void *)addr, size, MADV_NOHUGEPAGE) == 0;
+#else
+  return true;
 #endif  // MADV_NOHUGEPAGE
 }
 
-void DontDumpShadowMemory(uptr addr, uptr length) {
-#ifdef MADV_DONTDUMP
-  madvise((void *)addr, length, MADV_DONTDUMP);
-#endif
+bool DontDumpShadowMemory(uptr addr, uptr length) {
+#if defined(MADV_DONTDUMP)
+  return madvise((void *)addr, length, MADV_DONTDUMP) == 0;
+#elif defined(MADV_NOCORE)
+  return madvise((void *)addr, length, MADV_NOCORE) == 0;
+#else
+  return true;
+#endif  // MADV_DONTDUMP
 }
 
 static rlim_t getlim(int res) {
@@ -88,10 +93,12 @@ static rlim_t getlim(int res) {
 }
 
 static void setlim(int res, rlim_t lim) {
-  // The following magic is to prevent clang from replacing it with memset.
-  volatile struct rlimit rlim;
+  struct rlimit rlim;
+  if (getrlimit(res, const_cast<struct rlimit *>(&rlim))) {
+    Report("ERROR: %s getrlimit() failed %d\n", SanitizerToolName, errno);
+    Die();
+  }
   rlim.rlim_cur = lim;
-  rlim.rlim_max = lim;
   if (setrlimit(res, const_cast<struct rlimit *>(&rlim))) {
     Report("ERROR: %s setrlimit() failed %d\n", SanitizerToolName, errno);
     Die();
@@ -322,7 +329,7 @@ int GetNamedMappingFd(const char *name, uptr size) {
 }
 #endif
 
-void *MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name) {
+bool MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name) {
   int fd = name ? GetNamedMappingFd(name, size) : -1;
   unsigned flags = MAP_PRIVATE | MAP_FIXED | MAP_NORESERVE;
   if (fd == -1) flags |= MAP_ANON;
@@ -332,12 +339,14 @@ void *MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name) {
                          RoundUpTo(size, PageSize), PROT_READ | PROT_WRITE,
                          flags, fd, 0);
   int reserrno;
-  if (internal_iserror(p, &reserrno))
+  if (internal_iserror(p, &reserrno)) {
     Report("ERROR: %s failed to "
            "allocate 0x%zx (%zd) bytes at address %zx (errno: %d)\n",
            SanitizerToolName, size, size, fixed_addr, reserrno);
+    return false;
+  }
   IncreaseTotalMmap(size);
-  return (void *)p;
+  return true;
 }
 
 uptr ReservedAddressRange::Init(uptr size, const char *name, uptr fixed_addr) {

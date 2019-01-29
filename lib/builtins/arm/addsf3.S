@@ -1,9 +1,8 @@
 /*===-- addsf3.S - Adds two single precision floating pointer numbers-----===//
  *
- *                     The LLVM Compiler Infrastructure
- *
- * This file is dual licensed under the MIT and the University of Illinois Open
- * Source Licenses. See LICENSE.TXT for details.
+ * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ * See https://llvm.org/LICENSE.txt for license information.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  *
  *===----------------------------------------------------------------------===//
  *
@@ -178,7 +177,7 @@ LOCAL_LABEL(do_substraction):
 
   push {r0, r1, r2, r3}
   movs r0, r4
-  bl   __clzsi2
+  bl   SYMBOL_NAME(__clzsi2)
   movs r5, r0
   pop {r0, r1, r2, r3}
   // shift = rep_clz(aSignificand) - rep_clz(implicitBit << 3);

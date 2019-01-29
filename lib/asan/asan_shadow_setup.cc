@@ -1,9 +1,8 @@
 //===-- asan_shadow_setup.cc ----------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -31,8 +30,7 @@ void ReserveShadowMemoryRange(uptr beg, uptr end, const char *name) {
   CHECK_EQ(((end + 1) % GetMmapGranularity()), 0);
   uptr size = end - beg + 1;
   DecreaseTotalMmap(size);  // Don't count the shadow against mmap_limit_mb.
-  void *res = MmapFixedNoReserve(beg, size, name);
-  if (res != (void *)beg) {
+  if (!MmapFixedNoReserve(beg, size, name)) {
     Report(
         "ReserveShadowMemoryRange failed while trying to map 0x%zx bytes. "
         "Perhaps you're using ulimit -v\n",

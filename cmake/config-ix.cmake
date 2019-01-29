@@ -13,7 +13,7 @@ function(check_linker_flag flag out_var)
 endfunction()
 
 check_library_exists(c fopen "" COMPILER_RT_HAS_LIBC)
-if (COMPILER_RT_RUNTIME_LIBRARY STREQUAL "builtins")
+if (COMPILER_RT_USE_BUILTINS_LIBRARY)
   include(HandleCompilerRT)
   find_compiler_rt_library(builtins COMPILER_RT_BUILTINS_LIBRARY)
 else()
@@ -30,16 +30,30 @@ if (COMPILER_RT_HAS_NODEFAULTLIBS_FLAG)
   if (COMPILER_RT_HAS_LIBC)
     list(APPEND CMAKE_REQUIRED_LIBRARIES c)
   endif ()
-  if (COMPILER_RT_RUNTIME_LIBRARY STREQUAL "builtins")
+  if (COMPILER_RT_USE_BUILTINS_LIBRARY)
     list(APPEND CMAKE_REQUIRED_LIBRARIES "${COMPILER_RT_BUILTINS_LIBRARY}")
   elseif (COMPILER_RT_HAS_GCC_S_LIB)
     list(APPEND CMAKE_REQUIRED_LIBRARIES gcc_s)
   elseif (COMPILER_RT_HAS_GCC_LIB)
     list(APPEND CMAKE_REQUIRED_LIBRARIES gcc)
   endif ()
+  if (MINGW)
+    # Mingw64 requires quite a few "C" runtime libraries in order for basic
+    # programs to link successfully with -nodefaultlibs.
+    if (COMPILER_RT_USE_BUILTINS_LIBRARY)
+      set(MINGW_RUNTIME ${COMPILER_RT_BUILTINS_LIBRARY})
+    else ()
+      set(MINGW_RUNTIME gcc_s gcc)
+    endif()
+    set(MINGW_LIBRARIES mingw32 ${MINGW_RUNTIME} moldname mingwex msvcrt advapi32
+                        shell32 user32 kernel32 mingw32 ${MINGW_RUNTIME}
+                        moldname mingwex msvcrt)
+    list(APPEND CMAKE_REQUIRED_LIBRARIES ${MINGW_LIBRARIES})
+  endif()
 endif ()
 
 # CodeGen options.
+check_c_compiler_flag(-ffreestanding         COMPILER_RT_HAS_FFREESTANDING_FLAG)
 check_cxx_compiler_flag(-fPIC                COMPILER_RT_HAS_FPIC_FLAG)
 check_cxx_compiler_flag(-fPIE                COMPILER_RT_HAS_FPIE_FLAG)
 check_cxx_compiler_flag(-fno-builtin         COMPILER_RT_HAS_FNO_BUILTIN_FLAG)
@@ -51,7 +65,6 @@ check_cxx_compiler_flag(-fno-sanitize=safe-stack COMPILER_RT_HAS_FNO_SANITIZE_SA
 check_cxx_compiler_flag(-fvisibility=hidden  COMPILER_RT_HAS_FVISIBILITY_HIDDEN_FLAG)
 check_cxx_compiler_flag(-frtti               COMPILER_RT_HAS_FRTTI_FLAG)
 check_cxx_compiler_flag(-fno-rtti            COMPILER_RT_HAS_FNO_RTTI_FLAG)
-check_cxx_compiler_flag(-ffreestanding       COMPILER_RT_HAS_FFREESTANDING_FLAG)
 check_cxx_compiler_flag("-Werror -fno-function-sections" COMPILER_RT_HAS_FNO_FUNCTION_SECTIONS_FLAG)
 check_cxx_compiler_flag(-std=c++11           COMPILER_RT_HAS_STD_CXX11_FLAG)
 check_cxx_compiler_flag(-ftls-model=initial-exec COMPILER_RT_HAS_FTLS_MODEL_INITIAL_EXEC)
@@ -105,6 +118,22 @@ check_library_exists(dl dlopen "" COMPILER_RT_HAS_LIBDL)
 check_library_exists(rt shm_open "" COMPILER_RT_HAS_LIBRT)
 check_library_exists(m pow "" COMPILER_RT_HAS_LIBM)
 check_library_exists(pthread pthread_create "" COMPILER_RT_HAS_LIBPTHREAD)
+check_library_exists(execinfo backtrace "" COMPILER_RT_HAS_LIBEXECINFO)
+
+# Look for terminfo library, used in unittests that depend on LLVMSupport.
+if(LLVM_ENABLE_TERMINFO)
+  foreach(library terminfo tinfo curses ncurses ncursesw)
+    string(TOUPPER ${library} library_suffix)
+    check_library_exists(
+      ${library} setupterm "" COMPILER_RT_HAS_TERMINFO_${library_suffix})
+    if(COMPILER_RT_HAS_TERMINFO_${library_suffix})
+      set(COMPILER_RT_HAS_TERMINFO TRUE)
+      set(COMPILER_RT_TERMINFO_LIB "${library}")
+      break()
+    endif()
+  endforeach()
+endif()
+
 if (ANDROID AND COMPILER_RT_HAS_LIBDL)
   # Android's libstdc++ has a dependency on libdl.
   list(APPEND CMAKE_REQUIRED_LIBRARIES dl)
@@ -122,6 +151,13 @@ endif()
 
 # List of all architectures we can target.
 set(COMPILER_RT_SUPPORTED_ARCH)
+
+# Try to compile a very simple source file to ensure we can target the given
+# platform. We use the results of these tests to build only the various target
+# runtime libraries supported by our current compilers cross-compiling
+# abilities.
+set(SIMPLE_SOURCE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/simple.cc)
+file(WRITE ${SIMPLE_SOURCE} "#include <stdlib.h>\n#include <stdio.h>\nint main() { printf(\"hello, world\"); }\n")
 
 # Detect whether the current target platform is 32-bit or 64-bit, and setup
 # the correct commandline flags needed to attempt to target 32-bit and 64-bit.
@@ -192,7 +228,7 @@ set(ALL_SANITIZER_COMMON_SUPPORTED_ARCH ${X86} ${X86_64} ${PPC64}
 set(ALL_ASAN_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64}
     ${MIPS32} ${MIPS64} ${PPC64} ${S390X})
 set(ALL_DFSAN_SUPPORTED_ARCH ${X86_64} ${MIPS64} ${ARM64})
-set(ALL_FUZZER_SUPPORTED_ARCH x86_64)
+set(ALL_FUZZER_SUPPORTED_ARCH ${X86_64} ${ARM64})
 
 if(APPLE)
   set(ALL_LSAN_SUPPORTED_ARCH ${X86} ${X86_64} ${MIPS64} ${ARM64})
@@ -209,7 +245,7 @@ set(ALL_UBSAN_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64}
 set(ALL_SAFESTACK_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM64} ${MIPS32} ${MIPS64})
 set(ALL_CFI_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${MIPS64})
 set(ALL_ESAN_SUPPORTED_ARCH ${X86_64} ${MIPS64})
-set(ALL_SCUDO_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${MIPS32} ${MIPS64})
+set(ALL_SCUDO_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${MIPS32} ${MIPS64} ${PPC64})
 if(APPLE)
 set(ALL_XRAY_SUPPORTED_ARCH ${X86_64})
 else()
@@ -282,13 +318,13 @@ if(APPLE)
 
   # We're setting the flag manually for each target OS
   set(CMAKE_OSX_DEPLOYMENT_TARGET "")
-  
+
   set(DARWIN_COMMON_CFLAGS -stdlib=libc++)
   set(DARWIN_COMMON_LINK_FLAGS
     -stdlib=libc++
     -lc++
     -lc++abi)
-  
+
   check_linker_flag("-fapplication-extension" COMPILER_RT_HAS_APP_EXTENSION)
   if(COMPILER_RT_HAS_APP_EXTENSION)
     list(APPEND DARWIN_COMMON_LINK_FLAGS "-fapplication-extension")
@@ -309,7 +345,7 @@ if(APPLE)
   # Figure out which arches to use for each OS
   darwin_get_toolchain_supported_archs(toolchain_arches)
   message(STATUS "Toolchain supported arches: ${toolchain_arches}")
-  
+
   if(NOT MACOSX_VERSION_MIN_FLAG)
     darwin_test_archs(osx
       DARWIN_osx_ARCHS
@@ -364,7 +400,11 @@ if(APPLE)
         if(DARWIN_${platform}_ARCHS)
           list(APPEND SANITIZER_COMMON_SUPPORTED_OS ${platform})
           list(APPEND PROFILE_SUPPORTED_OS ${platform})
-          list(APPEND TSAN_SUPPORTED_OS ${platform})
+
+          list_intersect(DARWIN_${platform}_TSAN_ARCHS DARWIN_${platform}_ARCHS ALL_TSAN_SUPPORTED_ARCH)
+          if(DARWIN_${platform}_TSAN_ARCHS)
+            list(APPEND TSAN_SUPPORTED_OS ${platform})
+          endif()
         endif()
         foreach(arch ${DARWIN_${platform}_ARCHS})
           list(APPEND COMPILER_RT_SUPPORTED_ARCH ${arch})
@@ -376,7 +416,6 @@ if(APPLE)
 
   # for list_intersect
   include(CompilerRTUtils)
-
 
   list_intersect(SANITIZER_COMMON_SUPPORTED_ARCH
     ALL_SANITIZER_COMMON_SUPPORTED_ARCH
@@ -491,7 +530,8 @@ list_replace(COMPILER_RT_SANITIZERS_TO_BUILD all "${ALL_SANITIZERS}")
 
 if (SANITIZER_COMMON_SUPPORTED_ARCH AND NOT LLVM_USE_SANITIZER AND
     (OS_NAME MATCHES "Android|Darwin|Linux|FreeBSD|NetBSD|OpenBSD|Fuchsia|SunOS" OR
-    (OS_NAME MATCHES "Windows" AND (NOT MINGW AND NOT CYGWIN))))
+    (OS_NAME MATCHES "Windows" AND NOT CYGWIN AND
+        (NOT MINGW OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))))
   set(COMPILER_RT_HAS_SANITIZER_COMMON TRUE)
 else()
   set(COMPILER_RT_HAS_SANITIZER_COMMON FALSE)
@@ -526,7 +566,7 @@ else()
 endif()
 
 if (COMPILER_RT_HAS_SANITIZER_COMMON AND LSAN_SUPPORTED_ARCH AND
-    OS_NAME MATCHES "Darwin|Linux|FreeBSD|NetBSD")
+    OS_NAME MATCHES "Darwin|Linux|FreeBSD")
   set(COMPILER_RT_HAS_LSAN TRUE)
 else()
   set(COMPILER_RT_HAS_LSAN FALSE)
@@ -547,7 +587,7 @@ else()
 endif()
 
 if (PROFILE_SUPPORTED_ARCH AND NOT LLVM_USE_SANITIZER AND
-    OS_NAME MATCHES "Darwin|Linux|FreeBSD|Windows|Android|SunOS")
+    OS_NAME MATCHES "Darwin|Linux|FreeBSD|Windows|Android|Fuchsia|SunOS|NetBSD")
   set(COMPILER_RT_HAS_PROFILE TRUE)
 else()
   set(COMPILER_RT_HAS_PROFILE FALSE)
@@ -575,7 +615,7 @@ else()
 endif()
 
 if (COMPILER_RT_HAS_SANITIZER_COMMON AND SAFESTACK_SUPPORTED_ARCH AND
-    OS_NAME MATCHES "Darwin|Linux|FreeBSD|NetBSD")
+    OS_NAME MATCHES "Linux|FreeBSD|NetBSD")
   set(COMPILER_RT_HAS_SAFESTACK TRUE)
 else()
   set(COMPILER_RT_HAS_SAFESTACK FALSE)
@@ -588,7 +628,7 @@ else()
 endif()
 
 if (COMPILER_RT_HAS_SANITIZER_COMMON AND ESAN_SUPPORTED_ARCH AND
-    OS_NAME MATCHES "Linux")
+    OS_NAME MATCHES "Linux|FreeBSD")
   set(COMPILER_RT_HAS_ESAN TRUE)
 else()
   set(COMPILER_RT_HAS_ESAN FALSE)
@@ -602,14 +642,14 @@ else()
 endif()
 
 if (COMPILER_RT_HAS_SANITIZER_COMMON AND XRAY_SUPPORTED_ARCH AND
-    OS_NAME MATCHES "Darwin|Linux|FreeBSD|NetBSD|OpenBSD")
+    OS_NAME MATCHES "Darwin|Linux|FreeBSD|NetBSD|OpenBSD|Fuchsia")
   set(COMPILER_RT_HAS_XRAY TRUE)
 else()
   set(COMPILER_RT_HAS_XRAY FALSE)
 endif()
 
 if (COMPILER_RT_HAS_SANITIZER_COMMON AND FUZZER_SUPPORTED_ARCH AND
-    OS_NAME MATCHES "Android|Darwin|Linux|NetBSD|FreeBSD|OpenBSD|Fuchsia")
+    OS_NAME MATCHES "Android|Darwin|Linux|NetBSD|FreeBSD|OpenBSD|Fuchsia|Windows")
   set(COMPILER_RT_HAS_FUZZER TRUE)
 else()
   set(COMPILER_RT_HAS_FUZZER FALSE)

@@ -1,9 +1,8 @@
 /*===- InstrProfilingValue.c - Support library for PGO instrumentation ----===*\
 |*
-|*                     The LLVM Compiler Infrastructure
-|*
-|* This file is distributed under the University of Illinois Open Source
-|* License. See LICENSE.TXT for details.
+|* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+|* See https://llvm.org/LICENSE.txt for license information.
+|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 |*
 \*===----------------------------------------------------------------------===*/
 
@@ -105,8 +104,7 @@ static int allocateValueProfileCounters(__llvm_profile_data *Data) {
   return 1;
 }
 
-static ValueProfNode *allocateOneNode(__llvm_profile_data *Data, uint32_t Index,
-                                      uint64_t Value) {
+static ValueProfNode *allocateOneNode(void) {
   ValueProfNode *Node;
 
   if (!hasStaticCounters)
@@ -205,7 +203,7 @@ instrumentTargetValueImpl(uint64_t TargetValue, void *Data,
     return;
   }
 
-  CurVNode = allocateOneNode(PData, CounterIndex, TargetValue);
+  CurVNode = allocateOneNode();
   if (!CurVNode)
     return;
   CurVNode->Value = TargetValue;

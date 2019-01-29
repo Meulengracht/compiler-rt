@@ -1,9 +1,8 @@
 //===-- msan.cc -----------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,6 +14,7 @@
 #include "msan.h"
 #include "msan_chained_origin_depot.h"
 #include "msan_origin.h"
+#include "msan_report.h"
 #include "msan_thread.h"
 #include "msan_poisoning.h"
 #include "sanitizer_common/sanitizer_atomic.h"
@@ -56,6 +56,10 @@ THREADLOCAL u32 __msan_retval_origin_tls;
 
 SANITIZER_INTERFACE_ATTRIBUTE
 ALIGNED(16) THREADLOCAL u64 __msan_va_arg_tls[kMsanParamTlsSize / sizeof(u64)];
+
+SANITIZER_INTERFACE_ATTRIBUTE
+ALIGNED(16)
+THREADLOCAL u32 __msan_va_arg_origin_tls[kMsanParamTlsSize / sizeof(u32)];
 
 SANITIZER_INTERFACE_ATTRIBUTE
 THREADLOCAL u64 __msan_va_arg_overflow_size_tls;
@@ -276,6 +280,8 @@ void ScopedThreadLocalStateBackup::Restore() {
   internal_memset(__msan_param_tls, 0, sizeof(__msan_param_tls));
   internal_memset(__msan_retval_tls, 0, sizeof(__msan_retval_tls));
   internal_memset(__msan_va_arg_tls, 0, sizeof(__msan_va_arg_tls));
+  internal_memset(__msan_va_arg_origin_tls, 0,
+                  sizeof(__msan_va_arg_origin_tls));
 
   if (__msan_get_track_origins()) {
     internal_memset(&__msan_retval_origin_tls, 0,
@@ -394,9 +400,9 @@ void __msan_init() {
   SanitizerToolName = "MemorySanitizer";
 
   AvoidCVE_2016_2143();
-  InitTlsSize();
 
   CacheBinaryName();
+  CheckASLR();
   InitializeFlags();
 
   // Install tool-specific callbacks in sanitizer_common.
@@ -405,6 +411,7 @@ void __msan_init() {
   __sanitizer_set_report_path(common_flags()->log_path);
 
   InitializeInterceptors();
+  InitTlsSize();
   InstallDeadlySignalHandlers(MsanOnDeadlySignal);
   InstallAtExitHandler(); // Needs __cxa_atexit interceptor.
 

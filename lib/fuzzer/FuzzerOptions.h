@@ -1,8 +1,7 @@
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // fuzzer::FuzzingOptions
@@ -31,7 +30,7 @@ struct FuzzingOptions {
   bool UseCounters = false;
   bool UseMemmem = true;
   bool UseCmp = false;
-  bool UseValueProfile = false;
+  int UseValueProfile = false;
   bool Shrink = false;
   bool ReduceInputs = false;
   int ReloadIntervalSec = 1;
@@ -46,6 +45,7 @@ struct FuzzingOptions {
   std::string ExitOnSrcPos;
   std::string ExitOnItem;
   std::string FocusFunction;
+  std::string DataFlowTrace;
   bool SaveArtifacts = true;
   bool PrintNEW = true; // Print a status line when new units are found;
   bool PrintNewCovPcs = false;
@@ -56,7 +56,6 @@ struct FuzzingOptions {
   bool DumpCoverage = false;
   bool DetectLeaks = true;
   int PurgeAllocatorIntervalSec = 1;
-  int UseFeatureFrequency = false;
   int  TraceMalloc = 0;
   bool HandleAbrt = false;
   bool HandleBus = false;

@@ -1,9 +1,8 @@
 //===-- interception_linux.cc -----------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -223,8 +222,8 @@ static bool IsMemoryPadding(uptr address, uptr size) {
   return true;
 }
 
-static const u8 kHintNop9Bytes[] = {
-  0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+static const u8 kHintNop8Bytes[] = {
+  0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
 template<class T>
@@ -239,8 +238,8 @@ static bool FunctionHasPrefix(uptr address, const T &pattern) {
 static bool FunctionHasPadding(uptr address, uptr size) {
   if (IsMemoryPadding(address - size, size))
     return true;
-  if (size <= sizeof(kHintNop9Bytes) &&
-      FunctionHasPrefix(address, kHintNop9Bytes))
+  if (size <= sizeof(kHintNop8Bytes) &&
+      FunctionHasPrefix(address, kHintNop8Bytes))
     return true;
   return false;
 }

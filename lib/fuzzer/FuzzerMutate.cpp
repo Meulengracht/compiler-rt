@@ -1,9 +1,8 @@
 //===- FuzzerMutate.cpp - Mutate a test input -----------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // Mutate a test input.
@@ -195,7 +194,6 @@ DictionaryEntry MutationDispatcher::MakeDictionaryEntryFromCMP(
     const void *Arg1Mutation, const void *Arg2Mutation,
     size_t ArgSize, const uint8_t *Data,
     size_t Size) {
-  ScopedDoingMyOwnMemOrStr scoped_doing_my_own_mem_os_str;
   bool HandleFirst = Rand.RandBool();
   const void *ExistingBytes, *DesiredBytes;
   Word W;
@@ -525,6 +523,34 @@ size_t MutationDispatcher::MutateImpl(uint8_t *Data, size_t Size,
   }
   *Data = ' ';
   return 1;   // Fallback, should not happen frequently.
+}
+
+// Mask represents the set of Data bytes that are worth mutating.
+size_t MutationDispatcher::MutateWithMask(uint8_t *Data, size_t Size,
+                                          size_t MaxSize,
+                                          const Vector<uint8_t> &Mask) {
+  assert(Size <= Mask.size());
+  // * Copy the worthy bytes into a temporary array T
+  // * Mutate T
+  // * Copy T back.
+  // This is totally unoptimized.
+  auto &T = MutateWithMaskTemp;
+  if (T.size() < Size)
+    T.resize(Size);
+  size_t OneBits = 0;
+  for (size_t I = 0; I < Size; I++)
+    if (Mask[I])
+      T[OneBits++] = Data[I];
+
+  assert(!T.empty());
+  size_t NewSize = Mutate(T.data(), OneBits, OneBits);
+  assert(NewSize <= OneBits);
+  (void)NewSize;
+  // Even if NewSize < OneBits we still use all OneBits bytes.
+  for (size_t I = 0, J = 0; I < Size; I++)
+    if (Mask[I])
+      Data[I] = T[J++];
+  return Size;
 }
 
 void MutationDispatcher::AddWordToManualDictionary(const Word &W) {

@@ -1,9 +1,8 @@
 /* ===-- int_math.h - internal math inlines ---------------------------------===
  *
- *                     The LLVM Compiler Infrastructure
- *
- * This file is dual licensed under the MIT and the University of Illinois Open
- * Source Licenses. See LICENSE.TXT for details.
+ * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ * See https://llvm.org/LICENSE.txt for license information.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  *
  * ===-----------------------------------------------------------------------===
  *
@@ -92,12 +91,8 @@
 #endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
-#define crt_logb(x) logb((x))
-#define crt_logbf(x) logbf((x))
 #define crt_logbl(x) logbl((x))
 #else
-#define crt_logb(x) __builtin_logb((x))
-#define crt_logbf(x) __builtin_logbf((x))
 #define crt_logbl(x) __builtin_logbl((x))
 #endif
 

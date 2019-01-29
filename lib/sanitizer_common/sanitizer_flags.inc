@@ -1,9 +1,8 @@
 //===-- sanitizer_flags.h ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -56,7 +55,7 @@ COMMON_FLAG(
     "Mention name of executable when reporting error and "
     "append executable name to logs (as in \"log_path.exe_name.pid\").")
 COMMON_FLAG(
-    bool, log_to_syslog, SANITIZER_ANDROID || SANITIZER_MAC,
+    bool, log_to_syslog, (bool)SANITIZER_ANDROID || (bool)SANITIZER_MAC,
     "Write all sanitizer output to syslog in addition to other means of "
     "logging.")
 COMMON_FLAG(
@@ -103,7 +102,7 @@ COMMON_FLAG(bool, allow_user_segv_handler, true,
             "handle_*=1 will be upgraded to handle_*=2.")
 COMMON_FLAG(bool, use_sigaltstack, true,
             "If set, uses alternate stack for signal handling.")
-COMMON_FLAG(bool, detect_deadlocks, false,
+COMMON_FLAG(bool, detect_deadlocks, true,
             "If set, deadlock detection is enabled.")
 COMMON_FLAG(
     uptr, clear_shadow_mmap_threshold, 64 * 1024,
@@ -135,7 +134,7 @@ COMMON_FLAG(uptr, soft_rss_limit_mb, 0,
             " malloc/new.")
 COMMON_FLAG(bool, heap_profile, false, "Experimental heap profiler, asan-only")
 COMMON_FLAG(s32, allocator_release_to_os_interval_ms,
-            (SANITIZER_FUCHSIA || SANITIZER_WINDOWS) ? -1 : 5000,
+            ((bool)SANITIZER_FUCHSIA || (bool)SANITIZER_WINDOWS) ? -1 : 5000,
             "Only affects a 64-bit allocator. If set, tries to release unused "
             "memory to the OS, but not more often than this interval (in "
             "milliseconds). Negative values mean do not attempt to release "
@@ -225,7 +224,7 @@ COMMON_FLAG(bool, decorate_proc_maps, false, "If set, decorate sanitizer "
 COMMON_FLAG(int, exitcode, 1, "Override the program exit status if the tool "
                               "found an error")
 COMMON_FLAG(
-    bool, abort_on_error, SANITIZER_ANDROID || SANITIZER_MAC,
+    bool, abort_on_error, (bool)SANITIZER_ANDROID || (bool)SANITIZER_MAC,
     "If set, the tool calls abort() instead of _exit() after printing the "
     "error report.")
 COMMON_FLAG(bool, suppress_equal_pcs, true,
@@ -243,3 +242,6 @@ COMMON_FLAG(bool, dump_registers, true,
 COMMON_FLAG(bool, detect_write_exec, false,
           "If true, triggers warning when writable-executable pages requests "
           "are being made")
+COMMON_FLAG(bool, test_only_emulate_no_memorymap, false,
+            "TEST ONLY fail to read memory mappings to emulate sanitized "
+            "\"init\"")

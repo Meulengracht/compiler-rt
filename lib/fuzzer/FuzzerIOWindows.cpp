@@ -1,9 +1,8 @@
 //===- FuzzerIOWindows.cpp - IO utils for Windows. ------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // IO functions implementation for Windows.
@@ -72,6 +71,26 @@ bool IsFile(const std::string &Path) {
   return IsFile(Path, Att);
 }
 
+std::string Basename(const std::string &Path) {
+  size_t Pos = Path.find_last_of("/\\");
+  if (Pos == std::string::npos) return Path;
+  assert(Pos < Path.size());
+  return Path.substr(Pos + 1);
+}
+
+size_t FileSize(const std::string &Path) {
+  WIN32_FILE_ATTRIBUTE_DATA attr;
+  if (!GetFileAttributesExA(Path.c_str(), GetFileExInfoStandard, &attr)) {
+    Printf("GetFileAttributesExA() failed for \"%s\" (Error code: %lu).\n",
+           Path.c_str(), GetLastError());
+    return 0;
+  }
+  ULARGE_INTEGER size;
+  size.HighPart = attr.nFileSizeHigh;
+  size.LowPart = attr.nFileSizeLow;
+  return size.QuadPart;
+}
+
 void ListFilesInDirRecursive(const std::string &Dir, long *Epoch,
                              Vector<std::string> *V, bool TopDir) {
   auto E = GetEpoch(Dir);
@@ -91,7 +110,7 @@ void ListFilesInDirRecursive(const std::string &Dir, long *Epoch,
   {
     if (GetLastError() == ERROR_FILE_NOT_FOUND)
       return;
-    Printf("No such directory: %s; exiting\n", Dir.c_str());
+    Printf("No such file or directory: %s; exiting\n", Dir.c_str());
     exit(1);
   }
 

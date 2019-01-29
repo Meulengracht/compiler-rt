@@ -1,9 +1,8 @@
 /*===-- divtc3.c - Implement __divtc3 -------------------------------------===
  *
- *                     The LLVM Compiler Infrastructure
- *
- * This file is dual licensed under the MIT and the University of Illinois Open
- * Source Licenses. See LICENSE.TXT for details.
+ * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ * See https://llvm.org/LICENSE.txt for license information.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  *
  * ===----------------------------------------------------------------------===
  *
@@ -12,6 +11,8 @@
  *===----------------------------------------------------------------------===
  */
 
+#define QUAD_PRECISION
+#include "fp_lib.h"
 #include "int_lib.h"
 #include "int_math.h"
 
@@ -21,7 +22,8 @@ COMPILER_RT_ABI Lcomplex
 __divtc3(long double __a, long double __b, long double __c, long double __d)
 {
     int __ilogbw = 0;
-    long double __logbw = crt_logbl(crt_fmaxl(crt_fabsl(__c), crt_fabsl(__d)));
+    long double __logbw =
+        __compiler_rt_logbl(crt_fmaxl(crt_fabsl(__c), crt_fabsl(__d)));
     if (crt_isfinite(__logbw))
     {
         __ilogbw = (int)__logbw;

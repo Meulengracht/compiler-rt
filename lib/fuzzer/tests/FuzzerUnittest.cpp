@@ -1,5 +1,6 @@
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // Avoid ODR violations (LibFuzzer is built without ASan and this test is built
 // with ASan) involving C++ standard library types when using libcxx.
@@ -26,6 +27,21 @@ using namespace fuzzer;
 // Later we may want to make unittests that actually call LLVMFuzzerTestOneInput.
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   abort();
+}
+
+TEST(Fuzzer, Basename) {
+  EXPECT_EQ(Basename("foo/bar"), "bar");
+  EXPECT_EQ(Basename("bar"), "bar");
+  EXPECT_EQ(Basename("/bar"), "bar");
+  EXPECT_EQ(Basename("foo/x"), "x");
+  EXPECT_EQ(Basename("foo/"), "");
+#if LIBFUZZER_WINDOWS
+  EXPECT_EQ(Basename("foo\\bar"), "bar");
+  EXPECT_EQ(Basename("foo\\bar/baz"), "baz");
+  EXPECT_EQ(Basename("\\bar"), "bar");
+  EXPECT_EQ(Basename("foo\\x"), "x");
+  EXPECT_EQ(Basename("foo\\"), "");
+#endif
 }
 
 TEST(Fuzzer, CrossOver) {
@@ -574,12 +590,14 @@ TEST(FuzzerUtil, Base64) {
 }
 
 TEST(Corpus, Distribution) {
+  DataFlowTrace DFT;
   Random Rand(0);
   std::unique_ptr<InputCorpus> C(new InputCorpus(""));
   size_t N = 10;
   size_t TriesPerUnit = 1<<16;
   for (size_t i = 0; i < N; i++)
-    C->AddToCorpus(Unit{ static_cast<uint8_t>(i) }, 1, false, false, {});
+    C->AddToCorpus(Unit{static_cast<uint8_t>(i)}, 1, false, false, {}, DFT,
+                   nullptr);
 
   Vector<size_t> Hist(N);
   for (size_t i = 0; i < N * TriesPerUnit; i++) {

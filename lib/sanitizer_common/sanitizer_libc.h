@@ -1,9 +1,8 @@
 //===-- sanitizer_libc.h ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -49,7 +48,7 @@ uptr internal_strnlen(const char *s, uptr maxlen);
 char *internal_strrchr(const char *s, int c);
 char *internal_strstr(const char *haystack, const char *needle);
 // Works only for base=10 and doesn't set errno.
-s64 internal_simple_strtoll(const char *nptr, char **endptr, int base);
+s64 internal_simple_strtoll(const char *nptr, const char **endptr, int base);
 int internal_snprintf(char *buffer, uptr length, const char *format, ...);
 
 // Return true if all bytes in [mem, mem+size) are zero.

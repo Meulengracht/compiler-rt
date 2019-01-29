@@ -1,9 +1,8 @@
 /*===- InstrProfiling.h- Support library for PGO instrumentation ----------===*\
 |*
-|*                     The LLVM Compiler Infrastructure
-|*
-|* This file is distributed under the University of Illinois Open Source
-|* License. See LICENSE.TXT for details.
+|* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+|* See https://llvm.org/LICENSE.txt for license information.
+|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 |*
 \*===----------------------------------------------------------------------===*/
 
@@ -169,6 +168,14 @@ void __llvm_profile_initialize_file(void);
  * Side-effect: this API call will invoke malloc with dynamic memory allocation.
  */
 const char *__llvm_profile_get_path_prefix();
+
+/*!
+ * \brief Return filename (including path) of the profile data. Note that if the
+ * user calls __llvm_profile_set_filename later after invoking this interface,
+ * the actual file name may differ from what is returned here.
+ * Side-effect: this API call will invoke malloc with dynamic memory allocation.
+ */
+const char *__llvm_profile_get_filename();
 
 /*! \brief Get the magic token for the file format. */
 uint64_t __llvm_profile_get_magic(void);

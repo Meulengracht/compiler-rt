@@ -1,9 +1,8 @@
 //===- FuzzerTracePC.h - Internal header for the Fuzzer ---------*- C++ -* ===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // fuzzer::TracePC
@@ -17,6 +16,7 @@
 #include "FuzzerValueBitMap.h"
 
 #include <set>
+#include <unordered_map>
 
 namespace fuzzer {
 
@@ -80,7 +80,7 @@ class TracePC {
   template <class T> void HandleCmp(uintptr_t PC, T Arg1, T Arg2);
   size_t GetTotalPCCoverage();
   void SetUseCounters(bool UC) { UseCounters = UC; }
-  void SetUseValueProfile(bool VP) { UseValueProfile = VP; }
+  void SetUseValueProfileMask(uint32_t VPMask) { UseValueProfileMask = VPMask; }
   void SetPrintNewPCs(bool P) { DoPrintNewPCs = P; }
   void SetPrintNewFuncs(size_t P) { NumPrintNewFuncs = P; }
   void UpdateObservedPCs();
@@ -137,7 +137,7 @@ class TracePC {
 
 private:
   bool UseCounters = false;
-  bool UseValueProfile = false;
+  uint32_t UseValueProfileMask = false;
   bool DoPrintNewPCs = false;
   size_t NumPrintNewFuncs = 0;
 
@@ -165,10 +165,9 @@ private:
   uintptr_t *PCs() const;
 
   Set<uintptr_t> ObservedPCs;
-  Set<uintptr_t> ObservedFuncs;
+  std::unordered_map<uintptr_t, uintptr_t> ObservedFuncs;  // PC => Counter.
 
   std::pair<size_t, size_t> FocusFunction = {-1, -1};  // Module and PC IDs.
-
 
   ValueBitMap ValueProfileMap;
   uintptr_t InitialStack;
@@ -229,7 +228,7 @@ unsigned CounterToFeature(T Counter) {
 
 template <class Callback>  // void Callback(size_t Feature)
 ATTRIBUTE_NO_SANITIZE_ADDRESS
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void TracePC::CollectFeatures(Callback HandleFeature) const {
   uint8_t *Counters = this->Counters();
   size_t N = GetNumPCs();
@@ -260,7 +259,7 @@ void TracePC::CollectFeatures(Callback HandleFeature) const {
                      Handle8bitCounter);
   FirstFeature += (ExtraCountersEnd() - ExtraCountersBegin()) * 8;
 
-  if (UseValueProfile) {
+  if (UseValueProfileMask) {
     ValueProfileMap.ForEach([&](size_t Idx) {
       HandleFeature(FirstFeature + Idx);
     });
