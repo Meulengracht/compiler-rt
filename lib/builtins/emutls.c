@@ -125,14 +125,6 @@ static __inline void emutls_unlock() {
     pthread_mutex_unlock(&emutls_mutex);
 }
 
-static __inline void emutls_setspecific(emutls_address_array *value) {
-    pthread_setspecific(emutls_pthread_key, (void*) value);
-}
-
-static __inline emutls_address_array* emutls_getspecific() {
-    return (emutls_address_array*) pthread_getspecific(emutls_pthread_key);
-}
-
 #elif defined(MOLLENOS)
 #include <threads.h>
 
