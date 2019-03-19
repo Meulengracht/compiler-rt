@@ -128,7 +128,7 @@ static __inline void emutls_unlock() {
 #elif defined(MOLLENOS)
 #include <threads.h>
 
-static mtx_t emutls_mutex = UUID_INVALID;
+static mtx_t emutls_mutex = MUTEX_INIT(mtx_plain);
 static tss_t emutls_pthread_key = TSS_KEY_INVALID;
 
 typedef unsigned int gcc_word __attribute__((mode(word)));
