@@ -134,9 +134,13 @@
 #define DEFINE_CODE_STATE
 #endif
 
+#if defined(MOLLENOS)
+#define SYMBOL_NAME(name) name
+#else
 #define GLUE2(a, b) a##b
 #define GLUE(a, b) GLUE2(a, b)
 #define SYMBOL_NAME(name) GLUE(__USER_LABEL_PREFIX__, name)
+#endif
 
 #ifdef VISIBILITY_HIDDEN
 #define DECLARE_SYMBOL_VISIBILITY(name)                                        \

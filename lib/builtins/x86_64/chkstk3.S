@@ -4,12 +4,16 @@
 
 #include "../assembly.h"
 
-#if defined(__x86_64__) && !defined(MOLLENOS)
-
-// _chkstk (_alloca) routine - probe stack between %rsp and (%rsp-%rax) in 4k increments,
-// then decrement %rsp by %rax.  Preserves all registers except %rsp and flags.
-// This routine is windows specific
+// _chkstk routine
+// This routine is vali specific
 // http://msdn.microsoft.com/en-us/library/ms648426.aspx
+
+// Notes from r227519
+// MSVC x64s __chkstk and cygmings ___chkstk_ms do not adjust %rsp
+// themselves. It also does not clobber %rax so we can reuse it when
+// adjusting %rsp.
+
+#if defined(__x86_64__) && defined(MOLLENOS)
 
 .text
 .balign 4
@@ -18,8 +22,9 @@ DEFINE_COMPILERRT_FUNCTION(__alloca)
         // fallthrough
 DEFINE_COMPILERRT_FUNCTION(__chkstk)
         push   %rcx
+        push   %rax
         cmp    $0x1000,%rax
-        lea    16(%rsp),%rcx     // rsp before calling this routine -> rcx
+        lea    24(%rsp),%rcx
         jb     1f
 2:
         sub    $0x1000,%rcx
@@ -30,12 +35,8 @@ DEFINE_COMPILERRT_FUNCTION(__chkstk)
 1:
         sub    %rax,%rcx
         test   %rcx,(%rcx)
-
-        lea    8(%rsp),%rax     // load pointer to the return address into rax
-        mov    %rcx,%rsp        // install the new top of stack pointer into rsp
-        mov    -8(%rax),%rcx    // restore rcx
-        push   (%rax)           // push return address onto the stack
-        sub    %rsp,%rax        // restore the original value in rax
+        pop    %rax
+        pop    %rcx
         ret
 END_COMPILERRT_FUNCTION(__chkstk)
 END_COMPILERRT_FUNCTION(__alloca)
