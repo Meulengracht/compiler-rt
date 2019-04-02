@@ -29,9 +29,9 @@ CFLAGS = $(GCFLAGS) $(math_flags) $(INCLUDES)
 LFLAGS = /lib
 
 .PHONY: all
-all: ../build/libclang.lib
+all: ../build/compiler-rt.lib
 
-../build/libclang.lib: $(OBJECTS)
+../build/compiler-rt.lib: $(OBJECTS)
 	@printf "%b" "\033[0;36mCreating static library " $@ "\033[m\n"
 	@$(LD) $(LFLAGS) $(OBJECTS) /out:$@
 
@@ -49,5 +49,5 @@ all: ../build/libclang.lib
 
 .PHONY: clean
 clean:
-	@rm -f ../build/libclang.lib
+	@rm -f ../build/compiler-rt.lib
 	@rm -f $(OBJECTS)
