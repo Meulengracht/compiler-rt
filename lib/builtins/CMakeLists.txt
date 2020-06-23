@@ -257,6 +257,14 @@ if (NOT MSVC)
     )
   endif()
 
+  if (VALI)
+    set(x86_64_SOURCES
+      ${x86_64_SOURCES}
+      x86_64/chkstk.S
+      x86_64/chkstk3.S
+    )
+  endif()
+
   set(i386_SOURCES
     i386/ashldi3.S
     i386/ashrdi3.S
@@ -275,7 +283,7 @@ if (NOT MSVC)
   )
   filter_builtin_sources(i386_SOURCES EXCLUDE i386_SOURCES "${i386_SOURCES};${GENERIC_SOURCES}")
 
-  if (WIN32)
+  if (WIN32 OR VALI)
     set(i386_SOURCES
       ${i386_SOURCES}
       i386/chkstk.S
